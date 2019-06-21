@@ -19,7 +19,10 @@
 
 #include "zabbix/sysinc.h"
 #include "zabbix/module.h"
+#include "zabbix/common.h"
+#include "zabbix/log.h"
 #include "es_search.h"
+#include <sqlite3.h>
 
 /* the variable keeps timeout setting for item processing */
 static int	item_timeout = 0;
@@ -82,18 +85,28 @@ void	zbx_module_item_timeout(int timeout)
  ******************************************************************************/
 ZBX_METRIC	*zbx_module_item_list(void)
 {
+	zabbix_log(LOG_LEVEL_INFORMATION, "module loading");
 	return keys;
 }
 
 static int	dummy_essearch(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
-	SET_TEXT_RESULT(result, es_search());
+	zabbix_log(LOG_LEVEL_INFORMATION, "dummy_essearch called");
+
+	if (4 != request->nparam) {
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters."));
+		return SYSINFO_RET_FAIL;
+	}
+
+	SET_TEXT_RESULT(result, es_search(get_rparam(request, 0), get_rparam(request, 1), get_rparam(request, 2), get_rparam(request, 3)));
 
 	return SYSINFO_RET_OK;
 }
 
 static int	dummy_ping(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
+	zabbix_log(LOG_LEVEL_INFORMATION, "dummy_ping called");
+
 	SET_UI64_RESULT(result, 1);
 
 	return SYSINFO_RET_OK;
@@ -102,6 +115,8 @@ static int	dummy_ping(AGENT_REQUEST *request, AGENT_RESULT *result)
 static int	dummy_echo(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
 	char	*param;
+
+	zabbix_log(LOG_LEVEL_INFORMATION, "dummy_echo called");
 
 	if (1 != request->nparam)
 	{
@@ -146,6 +161,8 @@ static int	dummy_random(AGENT_REQUEST *request, AGENT_RESULT *result)
 	char	*param1, *param2;
 	int	from, to;
 
+	zabbix_log(LOG_LEVEL_INFORMATION, "dummy_random called");
+
 	if (2 != request->nparam)
 	{
 		/* set optional error message */
@@ -188,6 +205,26 @@ int	zbx_module_init(void)
 {
 	/* initialization for dummy.random */
 	srand(time(NULL));
+
+	sqlite3 *db;
+        char *filename="/tmp/es_search.db";
+        int rc;
+
+	// create database file
+        rc = sqlite3_open(filename, &db);
+        if(rc != SQLITE_OK){
+		zabbix_log(LOG_LEVEL_INFORMATION, "SQLite open error. code=%d", rc);
+        } else {
+		zabbix_log(LOG_LEVEL_INFORMATION, "SQLite database file OK.");
+		// create table
+	        rc = sqlite3_exec(db, "CREATE TABLE es_search (id integer primary key, name text, last_es_id text)", NULL, NULL, NULL);
+	        if(rc != SQLITE_OK){
+			zabbix_log(LOG_LEVEL_INFORMATION, "SQLite create table error. code=%d. msg=%s", rc, sqlite3_errmsg(db));
+	        } else {
+			zabbix_log(LOG_LEVEL_INFORMATION, "SQLite create table OK.");
+		}
+		sqlite3_close(db);
+	}
 
 	return ZBX_MODULE_OK;
 }
