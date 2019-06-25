@@ -1,18 +1,44 @@
 # zbx-es-module
-Zabbix loadable module for ES
+Zabbix loadable module for alerting metrics and logs in ES.
 
-## Item keys
+## Log Item
+format:
+```
+es.log_search[<period>,<es_endpoint>,<index_prefix>,<item_key>,<message>,<condition1>,<condition2>,...,<conditionN>]
+```
+|param|required/optional|for setting ..|examples|
+|---|---|---|---|
+|period|required|Search period, must longer than execution period.|Set "2m" (search from now-2m to now) for execution period 1m.|
+|es_endpoint|required|ES host address and port|elasticsearch.local:9200|
+|index_prefix|required|ES index prefix|Set "kube_cluster" for indices <br>kube_cluster-YYYY.MM.DD<br>(kube_cluster-2029.07.01,<br>kube_cluster-2029.07.02,<br>...)|
+|item_key|required|Key for log item|log|
+|message|required|Virtical bar separated messages to search log lines. Set * for all.|err&#124;warn&#124;fail|
+|condition1|optional|Filtering by item=value|hostname=cluster01m1|
+|:|optional|Filetring by item exists (or not)|ignore_alerts (!ignore_alerts)|
+|conditionN|optional|Item hierarchy expressed by dot|kubernetes.container_name=nginx|
 
-### es.log_search
+example:  
+```
+es.log_search[2m,es.local:9200,kube_cluster,log,err|warn|fail,hostname=cluster02w1,log_name=/var/log/syslog]
+```
 
-es.log_search[es_endpoint,index_prefix,item_key,condition1,condition2,...,conditionN]
+## Unsigned Int / Double Item
+format:
+```
+es.uint[<period>,<es_endpoint>,<index_prefix>,<item_key>,<condition1>,<condition2>,...,<conditionN>]
+es.double[<period>,<es_endpoint>,<index_prefix>,<item_key>,<condition1>,<condition2>,...,<conditionN>]
+```
+|param|required/optional|for setting ..|examples|
+|---|---|---|---|
+|period|required|Search period, must longer than execution period.|Set "2m" (search from now-2m to now) for execution period 1m.|
+|es_endpoint|required|ES host address and port|elasticsearch.local:9200|
+|index_prefix|required|ES index prefix|Set "kube_cluster" for indices <br>kube_cluster-YYYY.MM.DD<br>(kube_cluster-2029.07.01,<br>kube_cluster-2029.07.02,<br>...)|
+|item_key|required|Key for log item|cpu_idle|
+|condition1|optional|Filtering by item=value|hostname=cluster01m1|
+|:|optional|Filetring by item exists (or not)|ignore_alerts (!ignore_alerts)|
+|conditionN|optional|Item hierarchy expressed by dot|kubernetes.container_name=nginx|
 
-|param|for ..|examples|
-|---|---|---|
-|es_endpoint|ES host address and port|elasticsearch.local:9200|
-|index_prefix|ES index prefix|Set "kube_cluster" for indices <br>kube_cluster-YYYY.MM.DD<br>(kube_cluster-2029.07.01,<br>kube_cluster-2029.07.02,<br>...)|
-|item_key|Key for log item|log|
-|message|Virtical bar (&#124;) separated messages to search log lines to submit. Set * for all.|err&#124;warn&#124;fail|
-|condition1|Filtering by item=value|hostname=cluster01m1|
-|:|Filetring by item exists (or not)|ignore_alerts (!ignore_alerts)|
-|conditionN|Item hierarchy expressed by dot|kubernetes.container_name=nginx|
+example:  
+```
+es.uint[2m,es.local:9200,kube_cluster,cpu_idle,hostname=cluster02w1]
+```
