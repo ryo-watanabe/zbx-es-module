@@ -22,7 +22,7 @@
 #include "zabbix/common.h"
 #include "zabbix/log.h"
 #include "es_search.h"
-#include <sqlite3.h>
+#include "db.h"
 
 /* the variable keeps timeout setting for item processing */
 static int	item_timeout = 0;
@@ -32,7 +32,7 @@ static int	item_timeout = 0;
 static int	dummy_ping(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	dummy_echo(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	dummy_random(AGENT_REQUEST *request, AGENT_RESULT *result);
-static int	dummy_essearch(AGENT_REQUEST *request, AGENT_RESULT *result);
+static int	es_log_search(AGENT_REQUEST *request, AGENT_RESULT *result);
 
 static ZBX_METRIC keys[] =
 /*	KEY			FLAG		FUNCTION	TEST PARAMETERS */
@@ -40,7 +40,7 @@ static ZBX_METRIC keys[] =
 	{"dummy.ping",		0,		dummy_ping,	NULL},
 	{"dummy.echo",		CF_HAVEPARAMS,	dummy_echo,	"a message"},
 	{"dummy.random",	CF_HAVEPARAMS,	dummy_random,	"1,1000"},
-	{"dummy.es_search",	CF_HAVEPARAMS,	dummy_essearch,	NULL},
+	{"es.log_search",	CF_HAVEPARAMS,	es_log_search,	NULL},
 	{NULL}
 };
 
@@ -89,7 +89,7 @@ ZBX_METRIC	*zbx_module_item_list(void)
 	return keys;
 }
 
-static int	dummy_essearch(AGENT_REQUEST *request, AGENT_RESULT *result)
+static int	es_log_search(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
 	zabbix_log(LOG_LEVEL_INFORMATION, "dummy_essearch called");
 
@@ -206,24 +206,8 @@ int	zbx_module_init(void)
 	/* initialization for dummy.random */
 	srand(time(NULL));
 
-	sqlite3 *db;
-        char *filename="/tmp/es_search.db";
-        int rc;
-
-	// create database file
-        rc = sqlite3_open(filename, &db);
-        if(rc != SQLITE_OK){
-		zabbix_log(LOG_LEVEL_INFORMATION, "SQLite open error. code=%d", rc);
-        } else {
-		zabbix_log(LOG_LEVEL_INFORMATION, "SQLite database file OK.");
-		// create table
-	        rc = sqlite3_exec(db, "CREATE TABLE es_search (id integer primary key, name text, last_es_id text)", NULL, NULL, NULL);
-	        if(rc != SQLITE_OK){
-			zabbix_log(LOG_LEVEL_INFORMATION, "SQLite create table error. code=%d. msg=%s", rc, sqlite3_errmsg(db));
-	        } else {
-			zabbix_log(LOG_LEVEL_INFORMATION, "SQLite create table OK.");
-		}
-		sqlite3_close(db);
+	if (init_db()) {
+		return ZBX_MODULE_FAIL;
 	}
 
 	return ZBX_MODULE_OK;
