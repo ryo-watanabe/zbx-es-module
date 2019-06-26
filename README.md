@@ -23,6 +23,8 @@ es.log_search[2m,es.local:9200,kube_cluster,log,err|warn|fail,hostname=cluster02
 ```
 
 ## Unsigned Int / Double Item
+Not implemented yet.
+
 format:
 ```
 es.uint[<period>,<es_endpoint>,<index_prefix>,<item_key>,<condition1>,<condition2>,...,<conditionN>]
@@ -35,8 +37,8 @@ es.double[<period>,<es_endpoint>,<index_prefix>,<item_key>,<condition1>,<conditi
 |index_prefix|required|ES index prefix|Set "kube_cluster" for indices <br>kube_cluster-YYYY.MM.DD<br>(kube_cluster-2029.07.01,<br>kube_cluster-2029.07.02,<br>...)|
 |item_key|required|Key for log item|cpu_idle|
 |condition1|optional|Filtering by item=value|hostname=cluster01m1|
-|:|optional|Filetring by item exists (or not)|ignore_alerts (!ignore_alerts)|
-|conditionN|optional|Item hierarchy expressed by dot|kubernetes.container_name=nginx|
+|:|optional|Item hierarchy expressed by dot|kubernetes.container_name=nginx|
+|conditionN|optional||||
 
 example:  
 ```

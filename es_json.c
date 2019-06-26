@@ -6,20 +6,33 @@
 
 #include "zabbix/common.h"
 #include "zabbix/log.h"
+#include "es_search.h"
 
 #define NUM_LOG_LINES 50
 
-char* request_body(char* since, char* hostname, char* logkey, char* logname) {
+char* request_body(struct SearchParams *sp) {
 
 /*
         {
         "query":{
                 "bool":{
                         "filter":[
-                                {"range":{"@timestamp":{"gt":"SINCE"}}},
-                                {"term":{"hostname":"HOSTNAME"}},
-                                {"term":{"LOGKEY":"LOGNAME"}}
-                        ]
+                                {"range":{"@timestamp":{"gt":"now-2m"}}},
+                                {"term":{"hostname":"cluster02m1"}},
+                                {"term":{"container_name":"kubelet"}}
+                        ],
+                        "must":[
+                                {"exists":{"field":"container_name"}}
+                        ],
+                        "must_not":[
+                                {"exists":{"field":"ignore_alerts"}}
+                        ],
+                        "should":[
+                                {"term":{"log":"error"}},
+                                {"term":{"log":"warning"}},
+                                {"term":{"log":"failed"}}
+                        ],
+                        "minimum_should_match": 1
                         }
                 },
         "sort":{"@timestamp":"desc"},
@@ -27,52 +40,120 @@ char* request_body(char* since, char* hostname, char* logkey, char* logname) {
         }
 */
 
+        // root
         json_t *root = json_object();
 
+        // root > querry
         json_t *query = json_object();
         json_object_set_new( root, "query", query );
 
+        // querry > bool
         json_t *obj_bool = json_object();
         json_object_set_new( query, "bool", obj_bool );
 
+        // bool > filter
         json_t *filter_array = json_array();
         json_object_set_new( obj_bool, "filter", filter_array );
 
+        // bool > must
+        json_t *must_array = json_array();
+        json_object_set_new( obj_bool, "must", must_array );
+
+        // bool > must_not
+        json_t *must_not_array = json_array();
+        json_object_set_new( obj_bool, "must_not", must_not_array );
+
+        // bool > should
+        json_t *should_array = json_array();
+        json_object_set_new( obj_bool, "should", should_array );
+
+        // filter > range
         json_t *filter0 = json_object();
         json_t *range = json_object();
         json_t *timestamp = json_object();
         json_array_append( filter_array, filter0 );
         json_object_set_new( filter0, "range", range );
         json_object_set_new( range, "@timestamp", timestamp );
+        char since[16] = "now-";
+        strcat(since, sp->period);
         json_object_set_new( timestamp, "gt", json_string(since) );
 
-        json_t *filter1 = json_object();
-        json_t *term1 = json_object();
-        json_array_append( filter_array, filter1 );
-        json_object_set_new( filter1, "term", term1 );
-        json_object_set_new( term1, "hostname", json_string(hostname) );
+        // Conditions.
+        json_t **filterN = (json_t **)malloc(sp->nconds*sizeof(json_t));
+        json_t **termN = (json_t **)malloc(sp->nconds*sizeof(json_t));
+        int i;
+        for (i = 0; i < sp->nconds; i++) {
+                filterN[i] = json_object();
+                termN[i] = json_object();
 
-        json_t *filter2 = json_object();
-        json_t *term2 = json_object();
-        json_array_append( filter_array, filter2 );
-        json_object_set_new( filter2, "term", term2 );
-        json_object_set_new( term2, logkey, json_string(logname) );
+                // filter > term
+                if (sp->conditions[i].type == ITEM_IS_THE_VALUE) {
+                        json_array_append( filter_array, filterN[i] );
+                        json_object_set_new( filterN[i], "term", termN[i] );
+                        json_object_set_new( termN[i], sp->conditions[i].item, json_string(sp->conditions[i].value) );
+                }
 
+                // must > exists
+                if (sp->conditions[i].type == ITEM_EXISTS) {
+                        json_array_append( must_array, filterN[i] );
+                        json_object_set_new( filterN[i], "exists", termN[i] );
+                        json_object_set_new( termN[i], "field", json_string(sp->conditions[i].item) );
+                }
+
+                // must_not > exists
+                if (sp->conditions[i].type == ITEM_NOT_EXIST) {
+                        json_array_append( must_not_array, filterN[i] );
+                        json_object_set_new( filterN[i], "exists", termN[i] );
+                        json_object_set_new( termN[i], "field", json_string(sp->conditions[i].item) );
+                }
+        }
+
+        // Search Messages.
+        json_t **msgFilterN;
+        json_t **msgTermN;
+        if (sp->smsg.nmsg > 0) {
+
+                msgFilterN = (json_t **)malloc(sp->smsg.nmsg*sizeof(json_t));
+                msgTermN = (json_t **)malloc(sp->smsg.nmsg*sizeof(json_t));
+                for (i = 0; i < sp->smsg.nmsg; i++) {
+
+                        // should > term
+                        msgFilterN[i] = json_object();
+                        msgTermN[i] = json_object();
+                        json_array_append( should_array, msgFilterN[i] );
+                        json_object_set_new( msgFilterN[i], "term", msgTermN[i] );
+                        json_object_set_new( msgTermN[i], sp->item_key, json_string(sp->smsg.msg[i]) );
+
+                }
+                // bool > minimum_should_match
+                json_object_set_new( obj_bool, "minimum_should_match", json_integer(1) );
+        }
+
+        // root > sort
         json_t *sort = json_object();
         json_object_set_new( root, "sort", sort );
         json_object_set_new( sort, "@timestamp", json_string("desc") );
 
+        // root > size
         json_object_set_new( root, "size", json_integer(NUM_LOG_LINES) );
 
+        // Json string allocated and copied here, must be freed by caller.
         char* body = NULL;
         body = json_dumps(root, 0);
 
+        // Free all materials to make.
         json_decref(root);
+        free(filterN);
+        free(termN);
+        if (sp->smsg.nmsg > 0) {
+                free(msgFilterN);
+                free(msgTermN);
+        }
 
         return body;
 }
 
-char* get_logs_from_data(char* data, char* last_es_id, char* newest_es_id) {
+char* get_logs_from_data(char* data, char* last_es_id, char* newest_es_id, char* item_key) {
 
         char* logs = NULL;
 
@@ -117,50 +198,79 @@ char* get_logs_from_data(char* data, char* last_es_id, char* newest_es_id) {
                 }
         }
 */
-
+        // hits
         json_t *hits = json_object_get(jdata, "hits");
+
+        // hits > total
         int total = json_integer_value(json_object_get(hits, "total"));
+
+        // hits > hists[]
         json_t *hitarr = json_object_get(hits, "hits");
         int num_logs = json_array_size(hitarr);
 
+        // loop through hits[] and get hists[] > _source > log
         const char *logdata[NUM_LOG_LINES + 1];
         json_t *hit, *source;
         char *es_id;
         int i, length = 0;
         bool overwrapped = false;
         for (i = 0; i < num_logs; i++) {
+
                 hit = json_array_get(hitarr, i);
+
+                // hits[] > _source
                 source = json_object_get(hit, "_source");
+
+                // hits[] > _id, break when previous id found.
                 es_id = (char*)json_string_value(json_object_get(hit, "_id"));
                 if (0 == strcmp(last_es_id, es_id)) {
                         num_logs = i;
                         overwrapped = true;
                         break;
                 }
-                logdata[i] = json_string_value(json_object_get(source, "log"));
+
+                // _source > log, get log string pointer and calculate length.
+                logdata[i] = json_string_value(json_object_get(source, item_key));
                 length += strlen(logdata[i]);
+
+                // preserve newest id for next search
                 if (i == 0) {
                         zbx_strlcpy(newest_es_id, es_id, strlen(es_id) + 1);
                 }
+
         }
+
+        // buffer not enough (not overwrapped with previous search), add comment 'and more...'
         if (!overwrapped && total > num_logs) {
                 char msg[] = "and more...";
                 logdata[num_logs] = msg;
                 length += strlen(logdata[num_logs]);
                 num_logs++;
         }
+
+        // calculate number of LF
         int lfs = 0;
         if (num_logs > 1) {
                 lfs = num_logs - 1;
         }
+
+        // allocate result log string buffer
         logs = (char*)malloc(sizeof(char)*(length + lfs + 1));
+
+        // copy log lines
         *logs = '\0';
         for (i = 0; i < num_logs; i++) {
+
                 strcat(logs, logdata[i]);
+
+                // insert LF when log line not end with LF
                 if (i < num_logs - 1 && logs[strlen(logs) - 1] != '\n') {
                         strcat(logs, "\n");
                 }
         }
+
+        // free json data
         json_decref(jdata);
+
         return logs;
 }

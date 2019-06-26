@@ -33,6 +33,8 @@ static int	dummy_ping(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	dummy_echo(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	dummy_random(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	es_log_search(AGENT_REQUEST *request, AGENT_RESULT *result);
+//static int	es_uint(AGENT_REQUEST *request, AGENT_RESULT *result);
+//static int	es_double(AGENT_REQUEST *request, AGENT_RESULT *result);
 
 static ZBX_METRIC keys[] =
 /*	KEY			FLAG		FUNCTION	TEST PARAMETERS */
@@ -41,6 +43,8 @@ static ZBX_METRIC keys[] =
 	{"dummy.echo",		CF_HAVEPARAMS,	dummy_echo,	"a message"},
 	{"dummy.random",	CF_HAVEPARAMS,	dummy_random,	"1,1000"},
 	{"es.log_search",	CF_HAVEPARAMS,	es_log_search,	NULL},
+//	{"es.uint",		CF_HAVEPARAMS,	es_uint,	NULL},
+//	{"es.double",		CF_HAVEPARAMS,	es_double,	NULL},
 	{NULL}
 };
 
@@ -91,14 +95,16 @@ ZBX_METRIC	*zbx_module_item_list(void)
 
 static int	es_log_search(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
-	zabbix_log(LOG_LEVEL_INFORMATION, "dummy_essearch called");
+	zabbix_log(LOG_LEVEL_INFORMATION, "es_log_search called");
 
-	if (4 != request->nparam) {
-		SET_MSG_RESULT(result, strdup("Invalid number of parameters."));
+	char msg[128] = "";
+	struct SearchParams *sp;
+	if (NULL == (sp = set_params(request->params, request->nparam, msg))) {
+		SET_MSG_RESULT(result, strdup(msg));
 		return SYSINFO_RET_FAIL;
 	}
 
-	SET_TEXT_RESULT(result, es_search(get_rparam(request, 0), get_rparam(request, 1), get_rparam(request, 2), get_rparam(request, 3)));
+	SET_TEXT_RESULT(result, es_search(sp));
 
 	return SYSINFO_RET_OK;
 }
