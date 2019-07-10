@@ -4,6 +4,7 @@
 #include <curl/curl.h>
 #include <curl/easy.h>
 #include <stdbool.h>
+#include <openssl/md5.h>
 
 #include "es_search.h"
 #include "db.h"
@@ -67,6 +68,9 @@ int set_condition(char *param, struct SearchCondition *cond) {
         if (*p == '!') {
                 cond->type = ITEM_NOT_EXIST;
                 p++;
+        } else if (*p == '@') {
+                cond->type = ITEM_LABEL;
+                p++;
         }
 
         // copy condition string into item (and value) string.
@@ -119,6 +123,8 @@ struct SearchParams* set_params(char **params, int nparam, char *msg) {
         zabbix_log(ES_SEARCH_LOG_LEVEL, "set_params : prefix=%s", sp->prefix);
         sp->item_key = params[3];
         zabbix_log(ES_SEARCH_LOG_LEVEL, "set_params : item_key=%s", sp->item_key);
+        sp->message = params[4];
+        zabbix_log(ES_SEARCH_LOG_LEVEL, "set_params : message=%s", sp->message);
 
         // parse search message string
         if (set_search_message(params[4], &(sp->smsg))) {
@@ -134,8 +140,12 @@ struct SearchParams* set_params(char **params, int nparam, char *msg) {
         // allocate conditions buffer, freed in free_sp()
         sp->conditions = (struct SearchCondition *)malloc(sp->nconds*sizeof(struct SearchCondition));
         int i;
+        sp->label_key = NULL;
         for (i = 0; i < sp->nconds; i++) {
                 set_condition(params[i + 5], &(sp->conditions[i]));
+                if (sp->conditions[i].type == ITEM_LABEL) {
+                        sp->label_key = sp->conditions[i].item;
+                }
         }
 
         return sp;
@@ -182,31 +192,48 @@ size_t buffer_writer(char *ptr, size_t size, size_t nmemb, void *stream) {
 int construct_item_name(struct SearchParams *sp, char *name) {
 
         // making unique search item key by connecting all parameters
-        *name = '\0';
+        char buf[256] = "";
 
-        strcat(name, sp->endpoint);
-        strcat(name, sp->prefix);
-        strcat(name, sp->item_key);
+        strcat(buf, sp->endpoint);
+        strcat(buf, sp->prefix);
+        strcat(buf, sp->item_key);
+        strcat(buf, sp->message);
 
         int i;
         for (i = 0; i < sp->nconds; i++) {
-                strcat(name, sp->conditions[i].item);
-                strcat(name, sp->conditions[i].value);
+                strcat(buf, sp->conditions[i].item);
+                strcat(buf, sp->conditions[i].value);
         }
+
+        MD5_CTX c;
+        unsigned char md[MD5_DIGEST_LENGTH];
+
+        MD5_Init(&c);
+        MD5_Update(&c, buf, strlen(buf));
+        MD5_Final(md, &c);
+        for(i = 0; i < 16; i++) {
+                zbx_snprintf(&name[i*2], 3, "%02x", (unsigned int)md[i]);
+        }
+
+        zabbix_log(ES_SEARCH_LOG_LEVEL, "item hash : %s", name);
 
         return 0;
 }
 
-char* es_search(struct SearchParams *sp) {
+int es_search(char **logs, struct SearchParams *sp, char *msg) {
 
         CURL *curl;
         struct Buffer *buf;
         struct curl_slist *headers = NULL;
         char url[256] = "";
-        char name[256] = "";
-        char last_es_id[32] = "";
-        char newest_es_id[32] = "";
+        char name[33] = "";
+        char last_es_id[33] = "";
+        char newest_es_id[33] = "";
+        char status[16] = "";
         char* body = NULL;
+        int curl_error = 0;
+        int json_error = 0;
+        bool nodata = false;
 
         // allocate buffer struct
         buf = (struct Buffer *)malloc(sizeof(struct Buffer));
@@ -217,8 +244,9 @@ char* es_search(struct SearchParams *sp) {
         construct_item_name(sp, name);
 
         // get ES record id of previous search
-        int is_new_item = get_last_es_id(name, last_es_id);
-        zabbix_log(ES_SEARCH_LOG_LEVEL, "Last ES Id : %s (name:%s)", last_es_id, name);
+        int is_new_item = get_db_item(name, last_es_id, status);
+        zabbix_log(ES_SEARCH_LOG_LEVEL, "Last status:%s Id:%s (name:%s)", status, last_es_id, name);
+        bool prev_error = (0 == strcmp(status, "error"));
 
         // construct url
         strcat(url, "http://");
@@ -242,27 +270,56 @@ char* es_search(struct SearchParams *sp) {
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, buf);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, buffer_writer);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
         curl_easy_setopt(curl, CURLOPT_POST, 1);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, strlen(body));
 
         // curl execute
-        curl_easy_perform(curl);
+        CURLcode ret = curl_easy_perform(curl);
+        long code = 0;
+        if (ret == CURLE_OK) {
+                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+                zabbix_log(ES_SEARCH_LOG_LEVEL, "RESPONSE CODE : %d", code);
+        } else {
+                zbx_strlcpy(msg, curl_easy_strerror(ret), MESSAGE_MAX);
+                curl_error = 1;
+        }
         curl_easy_cleanup(curl);
 
-        zabbix_log(ES_SEARCH_LOG_LEVEL, "RESPONSE BODY : %s", buf->data);
+        if (!curl_error) {
 
-        // get logs in one string and newest ES record id
-        *newest_es_id = '\0';
-        char *ret = get_logs_from_data(buf->data, last_es_id, newest_es_id, sp->item_key);
-        zabbix_log(ES_SEARCH_LOG_LEVEL, "Newest ES id : %s", newest_es_id);
+                zabbix_log(ES_SEARCH_LOG_LEVEL, "RESPONSE BODY : %s", buf->data);
 
-        //  store newest ES record id in db
-        if (*newest_es_id != '\0') {
-                put_last_es_id(name, newest_es_id, is_new_item);
+                *newest_es_id = '\0';
+                if (code == 200L) {
+                        // get logs in one string and newest ES record id
+                        json_error = get_logs_from_data(logs, buf->data, last_es_id, newest_es_id, sp->item_key, sp->label_key, msg);
+                        if (!json_error) {
+                                if (*newest_es_id != '\0') {
+                                        //  store newest ES record id in db
+                                        zabbix_log(ES_SEARCH_LOG_LEVEL, "Newest ES id : %s", newest_es_id);
+                                        zabbix_log(ES_SEARCH_LOG_LEVEL, "LOGS : %s", *logs);
+                                } else {
+                                        zabbix_log(ES_SEARCH_LOG_LEVEL, "No new logs");
+                                        nodata = true;
+                                }
+                        }
+                } else {
+                        get_error_from_data(msg, buf->data);
+                }
+
         }
 
-        zabbix_log(ES_SEARCH_LOG_LEVEL, "LOGS : %s", ret);
+        // store item status
+        if (curl_error || json_error || code != 200L) {
+                zbx_strlcpy(status, "error", 6);
+        } else if (nodata) {
+                zbx_strlcpy(status, "nodata", 7);
+        } else {
+                zbx_strlcpy(status, "ok", 3);
+        }
+        put_db_item(name, newest_es_id, status, is_new_item);
 
         // free data except log string
         free(buf->data);
@@ -270,11 +327,20 @@ char* es_search(struct SearchParams *sp) {
         free(body);
         free_sp(sp);
 
-        // If log string size is zero, return NULL then treated as 'no_data' in zabbix
-        if (*ret == '\0') {
-                free(ret);
-                ret = NULL;
+        if (curl_error || json_error || code != 200L) {
+                return 1;
         }
 
-        return ret;
+        if ((prev_error || is_new_item) && nodata) {
+                free(*logs);
+                *logs = strdup("nodata");
+        }
+
+        // If log string size is zero, return 2 then treated as 'no_data' in zabbix
+        if (**logs == '\0') {
+                free(*logs);
+                return 2;
+        }
+
+        return 0;
 }

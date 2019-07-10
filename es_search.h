@@ -4,7 +4,8 @@
 enum CONDITION_TYPE {
         ITEM_IS_THE_VALUE,
         ITEM_EXISTS,
-        ITEM_NOT_EXIST
+        ITEM_NOT_EXIST,
+        ITEM_LABEL
 };
 
 struct SearchCondition {
@@ -24,13 +25,16 @@ struct SearchParams {
         char *endpoint;
         char *prefix;
         char *item_key;
-        //char *message;
+        char *message;
+        char *label_key;
         struct SearchMessage smsg;
         struct SearchCondition *conditions;
         int  nconds;
 };
 
-char* es_search(struct SearchParams *sp);
+int es_search(char **logs, struct SearchParams *sp, char *msg);
 struct SearchParams* set_params(char **params, int nparam, char *msg);
+
+#define MESSAGE_MAX 256
 
 #endif

@@ -23,7 +23,7 @@ int init_db() {
         } else {
 		zabbix_log(LOG_LEVEL_DEBUG, "SQLite database file OK.");
 		// create table
-	        rc = sqlite3_exec(db, "CREATE TABLE es_search (id integer primary key, name text, last_es_id text)", NULL, NULL, NULL);
+	        rc = sqlite3_exec(db, "CREATE TABLE es_search (id integer primary key, name text, last_es_id text, status text)", NULL, NULL, NULL);
 	        if(rc != SQLITE_OK){
 			zabbix_log(LOG_LEVEL_ERR, "SQLite create table error. code=%d. msg=%s", rc, sqlite3_errmsg(db));
                         return 1;
@@ -36,7 +36,7 @@ int init_db() {
         return 0;
 }
 
-int get_last_es_id(char* name, char* id) {
+int get_db_item(char* name, char* id, char* status) {
 
         sqlite3 *db;
         int rc;
@@ -51,7 +51,7 @@ int get_last_es_id(char* name, char* id) {
         }
 
         // prepared statement
-        sqlite3_prepare_v2(db,"SELECT last_es_id FROM es_search WHERE name=?", -1, &stmt, 0);
+        sqlite3_prepare_v2(db,"SELECT last_es_id, status FROM es_search WHERE name=?", -1, &stmt, 0);
         sqlite3_bind_text(stmt, 1, name, strlen(name), SQLITE_STATIC);
 
         // execute
@@ -61,6 +61,8 @@ int get_last_es_id(char* name, char* id) {
         if (rc == SQLITE_ROW) {
                 buf = sqlite3_column_text(stmt, 0);
                 zbx_strlcpy(id, buf, strlen(buf) + 1);
+                buf = sqlite3_column_text(stmt, 1);
+                zbx_strlcpy(status, buf, strlen(buf) + 1);
                 record_not_found = 0;
         }
 
@@ -70,7 +72,7 @@ int get_last_es_id(char* name, char* id) {
         return record_not_found;
 }
 
-int put_last_es_id(char* name, char* id, int insert) {
+int put_db_item(char* name, char* id, char* status, int insert) {
 
         sqlite3 *db;
         int rc;
@@ -84,13 +86,15 @@ int put_last_es_id(char* name, char* id, int insert) {
 
         // prepared statement
         if (insert == 1) {
-                sqlite3_prepare_v2(db,"INSERT INTO es_search (name, last_es_id) VALUES (?, ?)", -1, &stmt, 0);
+                sqlite3_prepare_v2(db,"INSERT INTO es_search (name, last_es_id, status) VALUES (?, ?, ?)", -1, &stmt, 0);
                 sqlite3_bind_text(stmt, 1, name, strlen(name), SQLITE_STATIC);
                 sqlite3_bind_text(stmt, 2, id, strlen(id), SQLITE_STATIC);
+                sqlite3_bind_text(stmt, 3, status, strlen(status), SQLITE_STATIC);
         } else {
-                sqlite3_prepare_v2(db,"UPDATE es_search SET last_es_id=? WHERE name=?", -1, &stmt, 0);
+                sqlite3_prepare_v2(db,"UPDATE es_search SET last_es_id=?, status=? WHERE name=?", -1, &stmt, 0);
                 sqlite3_bind_text(stmt, 1, id, strlen(id), SQLITE_STATIC);
-                sqlite3_bind_text(stmt, 2, name, strlen(name), SQLITE_STATIC);
+                sqlite3_bind_text(stmt, 2, status, strlen(status), SQLITE_STATIC);
+                sqlite3_bind_text(stmt, 3, name, strlen(name), SQLITE_STATIC);
         }
 
         // execute

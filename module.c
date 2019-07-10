@@ -97,14 +97,22 @@ static int	es_log_search(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
 	zabbix_log(LOG_LEVEL_INFORMATION, "es_log_search called");
 
-	char msg[128] = "";
+	char msg[MESSAGE_MAX] = "";
 	struct SearchParams *sp;
 	if (NULL == (sp = set_params(request->params, request->nparam, msg))) {
 		SET_MSG_RESULT(result, strdup(msg));
 		return SYSINFO_RET_FAIL;
 	}
 
-	SET_TEXT_RESULT(result, es_search(sp));
+	char *logs;
+	*msg = '\0';
+	int ret = es_search(&logs, sp, msg);
+	if (ret == 0) {
+		SET_TEXT_RESULT(result, logs);
+	} else if (ret != 2) { // ret = 2 means no logs.
+		SET_MSG_RESULT(result, strdup(msg));
+		return SYSINFO_RET_FAIL;
+	}
 
 	return SYSINFO_RET_OK;
 }

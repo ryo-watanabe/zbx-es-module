@@ -153,17 +153,14 @@ char* request_body(struct SearchParams *sp) {
         return body;
 }
 
-char* get_logs_from_data(char* data, char* last_es_id, char* newest_es_id, char* item_key) {
-
-        char* logs = NULL;
+int get_logs_from_data(char **logs, char* data, char* last_es_id, char* newest_es_id, char* item_key, char* label_key, char *msg) {
 
         json_error_t jerror;
         json_t *jdata = json_loads(data, 0, &jerror);
 
         if (jdata == NULL) {
-                logs = (char*)malloc(sizeof(char)*(strlen(jerror.text) + 1));
-                zbx_strlcpy(logs, jerror.text, strlen(jerror.text));
-                return logs;
+                zbx_strlcpy(msg, jerror.text, MESSAGE_MAX);
+                return 1;
         }
 
 /*
@@ -210,6 +207,7 @@ char* get_logs_from_data(char* data, char* last_es_id, char* newest_es_id, char*
 
         // loop through hits[] and get hists[] > _source > log
         const char *logdata[NUM_LOG_LINES + 1];
+        const char *labels[NUM_LOG_LINES + 1];
         json_t *hit, *source;
         char *es_id;
         int i, length = 0;
@@ -233,6 +231,11 @@ char* get_logs_from_data(char* data, char* last_es_id, char* newest_es_id, char*
                 logdata[i] = json_string_value(json_object_get(source, item_key));
                 length += strlen(logdata[i]);
 
+                if (label_key != NULL) {
+                        labels[i] = json_string_value(json_object_get(source, label_key));
+                        length += strlen(labels[i]) + 3;
+                }
+
                 // preserve newest id for next search
                 if (i == 0) {
                         zbx_strlcpy(newest_es_id, es_id, strlen(es_id) + 1);
@@ -244,6 +247,8 @@ char* get_logs_from_data(char* data, char* last_es_id, char* newest_es_id, char*
         if (!overwrapped && total > num_logs) {
                 char msg[] = "and more...";
                 logdata[num_logs] = msg;
+                char empty[] = "";
+                labels[num_logs] = empty;
                 length += strlen(logdata[num_logs]);
                 num_logs++;
         }
@@ -255,22 +260,70 @@ char* get_logs_from_data(char* data, char* last_es_id, char* newest_es_id, char*
         }
 
         // allocate result log string buffer
-        logs = (char*)malloc(sizeof(char)*(length + lfs + 1));
+        char *buf = (char*)malloc(sizeof(char)*(length + lfs + 1));
 
         // copy log lines
-        *logs = '\0';
+        *buf = '\0';
         for (i = 0; i < num_logs; i++) {
 
-                strcat(logs, logdata[i]);
+                if (label_key != NULL && *(labels[i]) != '\0') {
+                        strcat(buf, "[");
+                        strcat(buf, labels[i]);
+                        strcat(buf, "] ");
+                }
+                strcat(buf, logdata[i]);
 
                 // insert LF when log line not end with LF
-                if (i < num_logs - 1 && logs[strlen(logs) - 1] != '\n') {
-                        strcat(logs, "\n");
+                if (i < num_logs - 1 && buf[strlen(buf) - 1] != '\n') {
+                        strcat(buf, "\n");
                 }
         }
 
         // free json data
         json_decref(jdata);
 
-        return logs;
+        *logs = buf;
+
+        return 0;
+}
+
+int get_error_from_data(char *msg, char* data) {
+
+        json_error_t jerror;
+        json_t *jdata = json_loads(data, 0, &jerror);
+
+        if (jdata == NULL) {
+                zbx_strlcpy(msg, jerror.text, MESSAGE_MAX);
+                return 1;
+        }
+
+/*
+        {
+        "error":{
+                "root_cause":[{
+                        "type":"illegal_argument_exception",
+                        "reason":"field name is null or empty"
+                        }],
+                "type":"illegal_argument_exception",
+                "reason":"field name is null or empty"
+                },
+        "status":400
+        }
+*/
+        // error
+        json_t *error = json_object_get(jdata, "error");
+
+        // error > root_cause[0]
+        json_t *root_cause_array = json_object_get(error, "root_cause");
+        json_t *root_cause0 = json_array_get(root_cause_array, 0);
+
+        // copy error type and reason
+        strcat(msg, json_string_value(json_object_get(root_cause0, "type")));
+        strcat(msg, " : ");
+        strcat(msg, json_string_value(json_object_get(root_cause0, "reason")));
+
+        // free json data
+        json_decref(jdata);
+
+        return 0;
 }

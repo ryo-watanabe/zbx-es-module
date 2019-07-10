@@ -2,7 +2,7 @@
 #define DB_H
 
 int init_db();
-int get_last_es_id(char* name, char* id);
-int put_last_es_id(char* name, char* id, int insert);
+int get_db_item(char* name, char* id, char* status);
+int put_db_item(char* name, char* id, char* status, int insert);
 
 #endif
