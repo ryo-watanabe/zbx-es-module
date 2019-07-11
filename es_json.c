@@ -76,6 +76,7 @@ char* request_body(struct SearchParams *sp) {
         json_object_set_new( range, "@timestamp", timestamp );
         char since[16] = "now-";
         strcat(since, sp->period);
+        strcat(since, "s");
         json_object_set_new( timestamp, "gt", json_string(since) );
 
         // Conditions.
@@ -94,7 +95,7 @@ char* request_body(struct SearchParams *sp) {
                 }
 
                 // must > exists
-                if (sp->conditions[i].type == ITEM_EXISTS) {
+                if (sp->conditions[i].type == ITEM_EXISTS || sp->conditions[i].type == ITEM_LABEL) {
                         json_array_append( must_array, filterN[i] );
                         json_object_set_new( filterN[i], "exists", termN[i] );
                         json_object_set_new( termN[i], "field", json_string(sp->conditions[i].item) );
@@ -151,6 +152,36 @@ char* request_body(struct SearchParams *sp) {
         }
 
         return body;
+}
+
+json_t* json_hierarchy_object_get(json_t *data, char* key) {
+        char *keycopy = strdup(key);
+
+        // Divide key
+        char *keys[5];
+        char *k = keycopy;
+        int h = 0;
+        keys[h++] = k;
+        while (*k != '\0') {
+                if (*k == '.') {
+                        *k++ = '\0';
+                        keys[h++] = k;
+                } else {
+                        k++;
+                }
+                if (h == 5) {
+                        break;
+                }
+        }
+
+        // Down along hierarchy
+        int i;
+        for (i = 0; i < h; i++) {
+                data = json_object_get(data, keys[i]);
+        }
+
+        free(keycopy);
+        return data;
 }
 
 int get_logs_from_data(char **logs, char* data, char* last_es_id, char* newest_es_id, char* item_key, char* label_key, char *msg) {
@@ -232,7 +263,7 @@ int get_logs_from_data(char **logs, char* data, char* last_es_id, char* newest_e
                 length += strlen(logdata[i]);
 
                 if (label_key != NULL) {
-                        labels[i] = json_string_value(json_object_get(source, label_key));
+                        labels[i] = json_string_value(json_hierarchy_object_get(source, label_key));
                         length += strlen(labels[i]) + 3;
                 }
 

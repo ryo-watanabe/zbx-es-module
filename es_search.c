@@ -1,13 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <curl/curl.h>
-#include <curl/easy.h>
 #include <stdbool.h>
 #include <openssl/md5.h>
+#include <time.h>
 
 #include "es_search.h"
 #include "db.h"
+#include "curl_post.h"
 #include "es_json.h"
 #include "zabbix/common.h"
 #include "zabbix/log.h"
@@ -156,39 +156,6 @@ void free_sp(struct SearchParams *sp) {
         free(sp);
 }
 
-// buffer struct for curl write data
-struct Buffer {
-        char *data;
-        int data_size;
-};
-
-// callback for curl write function
-size_t buffer_writer(char *ptr, size_t size, size_t nmemb, void *stream) {
-
-        struct Buffer *buf = (struct Buffer *)stream;
-        int block = size * nmemb;
-
-        if (!buf) {
-                return block;
-        }
-
-        // allocate buffer for string length (+ 1 for '\0')
-        if (!buf->data) {
-                buf->data = (char *)malloc(block + 1);
-        } else {
-                buf->data = (char *)realloc(buf->data, buf->data_size + block + 1);
-        }
-
-        // copy into buffer and close string
-        if (buf->data) {
-                memcpy(buf->data + buf->data_size, ptr, block);
-                buf->data_size += block;
-                buf->data[buf->data_size] = '\0';
-        }
-
-        return block;
-}
-
 int construct_item_name(struct SearchParams *sp, char *name) {
 
         // making unique search item key by connecting all parameters
@@ -222,20 +189,17 @@ int construct_item_name(struct SearchParams *sp, char *name) {
 
 int es_search(char **logs, struct SearchParams *sp, char *msg) {
 
-        CURL *curl;
-        struct Buffer *buf;
-        struct curl_slist *headers = NULL;
         char url[256] = "";
         char name[33] = "";
         char last_es_id[33] = "";
         char newest_es_id[33] = "";
         char status[16] = "";
         char* body = NULL;
-        int curl_error = 0;
         int json_error = 0;
         bool nodata = false;
 
         // allocate buffer struct
+        struct Buffer *buf;
         buf = (struct Buffer *)malloc(sizeof(struct Buffer));
         buf->data = NULL;
         buf->data_size = 0;
@@ -244,9 +208,13 @@ int es_search(char **logs, struct SearchParams *sp, char *msg) {
         construct_item_name(sp, name);
 
         // get ES record id of previous search
-        int is_new_item = get_db_item(name, last_es_id, status);
-        zabbix_log(ES_SEARCH_LOG_LEVEL, "Last status:%s Id:%s (name:%s)", status, last_es_id, name);
+        time_t prev_time = 0;
+        time_t now = time(NULL);
+        int is_new_item = get_db_item(name, last_es_id, status, &prev_time);
+        time_t offset = now - prev_time;
+        zabbix_log(ES_SEARCH_LOG_LEVEL, "Last status:%s Id:%s name:%s time:%ld(offset:%ldsec.)", status, last_es_id, name, prev_time, offset);
         bool prev_error = (0 == strcmp(status, "error"));
+        bool offset_too_long = (offset > atoi(sp->period));
 
         // construct url
         strcat(url, "http://");
@@ -256,39 +224,16 @@ int es_search(char **logs, struct SearchParams *sp, char *msg) {
         strcat(url, "-*/_search");
         zabbix_log(ES_SEARCH_LOG_LEVEL, "URL : %s", url);
 
-        // set http header
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-
         // make request json
         body = request_body(sp);
         zabbix_log(ES_SEARCH_LOG_LEVEL, "REQUEST BODY : %s", body);
 
-        // curl setup
-        curl = curl_easy_init();
-        curl_easy_setopt(curl, CURLOPT_URL, url);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, buf);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, buffer_writer);
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
-        curl_easy_setopt(curl, CURLOPT_POST, 1);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, strlen(body));
-
-        // curl execute
-        CURLcode ret = curl_easy_perform(curl);
+        // Do curl post
         long code = 0;
-        if (ret == CURLE_OK) {
-                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-                zabbix_log(ES_SEARCH_LOG_LEVEL, "RESPONSE CODE : %d", code);
-        } else {
-                zbx_strlcpy(msg, curl_easy_strerror(ret), MESSAGE_MAX);
-                curl_error = 1;
-        }
-        curl_easy_cleanup(curl);
-
+        int curl_error = curl_post(url, body, buf, msg, &code);
         if (!curl_error) {
 
+                zabbix_log(ES_SEARCH_LOG_LEVEL, "RESPONSE CODE : %d", code);
                 zabbix_log(ES_SEARCH_LOG_LEVEL, "RESPONSE BODY : %s", buf->data);
 
                 *newest_es_id = '\0';
@@ -331,9 +276,9 @@ int es_search(char **logs, struct SearchParams *sp, char *msg) {
                 return 1;
         }
 
-        if ((prev_error || is_new_item) && nodata) {
+        if ((prev_error || is_new_item || offset_too_long) && nodata) {
                 free(*logs);
-                *logs = strdup("nodata");
+                *logs = strdup("es.log_search configured successfully (nodata)");
         }
 
         // If log string size is zero, return 2 then treated as 'no_data' in zabbix
