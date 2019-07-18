@@ -4,8 +4,8 @@
 #include <curl/curl.h>
 #include <curl/easy.h>
 
+#include "es_common.h"
 #include "curl_post.h"
-#include "es_search.h"
 
 // callback for curl write function
 size_t buffer_writer(char *ptr, size_t size, size_t nmemb, void *stream) {
@@ -34,6 +34,7 @@ size_t buffer_writer(char *ptr, size_t size, size_t nmemb, void *stream) {
         return block;
 }
 
+// Do curl POST
 int curl_post(char* url, char* body, struct Buffer *buf, char* msg, long *code) {
 
         CURL *curl;

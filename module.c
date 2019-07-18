@@ -21,8 +21,9 @@
 #include "zabbix/module.h"
 #include "zabbix/common.h"
 #include "zabbix/log.h"
-#include "es_search.h"
 #include "db.h"
+#include "es_params.h"
+#include "es_search.h"
 
 /* the variable keeps timeout setting for item processing */
 static int	item_timeout = 0;

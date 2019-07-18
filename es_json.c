@@ -6,10 +6,11 @@
 
 #include "zabbix/common.h"
 #include "zabbix/log.h"
-#include "es_search.h"
+#include "es_json.h"
 
 #define NUM_LOG_LINES 50
 
+// Construct query for ES
 char* request_body(struct SearchParams *sp) {
 
 /*
@@ -80,10 +81,17 @@ char* request_body(struct SearchParams *sp) {
         json_object_set_new( timestamp, "gt", json_string(since) );
 
         // Conditions.
-        json_t **filterN = (json_t **)malloc(sp->nconds*sizeof(json_t));
-        json_t **termN = (json_t **)malloc(sp->nconds*sizeof(json_t));
+        //json_t **filterN = (json_t **)malloc(sp->nconds*sizeof(json_t));
+        //json_t **termN = (json_t **)malloc(sp->nconds*sizeof(json_t));
+        json_t *filterN[10];
+        json_t *termN[10];
         int i;
         for (i = 0; i < sp->nconds; i++) {
+
+                if (i >= 10) {
+                        break;
+                }
+
                 filterN[i] = json_object();
                 termN[i] = json_object();
 
@@ -110,13 +118,20 @@ char* request_body(struct SearchParams *sp) {
         }
 
         // Search Messages.
-        json_t **msgFilterN;
-        json_t **msgTermN;
+        //json_t **msgFilterN;
+        //json_t **msgTermN;
+        json_t *msgFilterN[10];
+        json_t *msgTermN[10];
+
         if (sp->smsg.nmsg > 0) {
 
-                msgFilterN = (json_t **)malloc(sp->smsg.nmsg*sizeof(json_t));
-                msgTermN = (json_t **)malloc(sp->smsg.nmsg*sizeof(json_t));
+                //msgFilterN = (json_t **)malloc(sp->smsg.nmsg*sizeof(json_t));
+                //msgTermN = (json_t **)malloc(sp->smsg.nmsg*sizeof(json_t));
                 for (i = 0; i < sp->smsg.nmsg; i++) {
+
+                        if (i >= 10) {
+                                break;
+                        }
 
                         // should > term
                         msgFilterN[i] = json_object();
@@ -144,16 +159,17 @@ char* request_body(struct SearchParams *sp) {
 
         // Free all materials to make.
         json_decref(root);
-        free(filterN);
-        free(termN);
-        if (sp->smsg.nmsg > 0) {
-                free(msgFilterN);
-                free(msgTermN);
-        }
+        //free(filterN);
+        //free(termN);
+        //if (sp->smsg.nmsg > 0) {
+        //        free(msgFilterN);
+        //        free(msgTermN);
+        //}
 
         return body;
 }
 
+// json_object_get through hierarchy (max 5 levels)
 json_t* json_hierarchy_object_get(json_t *data, char* key) {
         char *keycopy = strdup(key);
 
@@ -184,6 +200,7 @@ json_t* json_hierarchy_object_get(json_t *data, char* key) {
         return data;
 }
 
+// Construct mutiline log result from ES search result
 int get_logs_from_data(char **logs, char* data, char* last_es_id, char* newest_es_id, char* item_key, char* label_key, char *msg) {
 
         json_error_t jerror;
@@ -318,6 +335,7 @@ int get_logs_from_data(char **logs, char* data, char* last_es_id, char* newest_e
         return 0;
 }
 
+// Get message from ES error search result
 int get_error_from_data(char *msg, char* data) {
 
         json_error_t jerror;
