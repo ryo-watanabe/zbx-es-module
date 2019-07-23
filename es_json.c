@@ -72,7 +72,7 @@ char* request_body(struct SearchParams *sp) {
         json_t *filter0 = json_object();
         json_t *range = json_object();
         json_t *timestamp = json_object();
-        json_array_append( filter_array, filter0 );
+        json_array_append_new( filter_array, filter0 );
         json_object_set_new( filter0, "range", range );
         json_object_set_new( range, "@timestamp", timestamp );
         char since[16] = "now-";
@@ -81,8 +81,6 @@ char* request_body(struct SearchParams *sp) {
         json_object_set_new( timestamp, "gt", json_string(since) );
 
         // Conditions.
-        //json_t **filterN = (json_t **)malloc(sp->nconds*sizeof(json_t));
-        //json_t **termN = (json_t **)malloc(sp->nconds*sizeof(json_t));
         json_t *filterN[10];
         json_t *termN[10];
         int i;
@@ -97,36 +95,32 @@ char* request_body(struct SearchParams *sp) {
 
                 // filter > term
                 if (sp->conditions[i].type == ITEM_IS_THE_VALUE) {
-                        json_array_append( filter_array, filterN[i] );
+                        json_array_append_new( filter_array, filterN[i] );
                         json_object_set_new( filterN[i], "term", termN[i] );
                         json_object_set_new( termN[i], sp->conditions[i].item, json_string(sp->conditions[i].value) );
                 }
 
                 // must > exists
                 if (sp->conditions[i].type == ITEM_EXISTS || sp->conditions[i].type == ITEM_LABEL) {
-                        json_array_append( must_array, filterN[i] );
+                        json_array_append_new( must_array, filterN[i] );
                         json_object_set_new( filterN[i], "exists", termN[i] );
                         json_object_set_new( termN[i], "field", json_string(sp->conditions[i].item) );
                 }
 
                 // must_not > exists
                 if (sp->conditions[i].type == ITEM_NOT_EXIST) {
-                        json_array_append( must_not_array, filterN[i] );
+                        json_array_append_new( must_not_array, filterN[i] );
                         json_object_set_new( filterN[i], "exists", termN[i] );
                         json_object_set_new( termN[i], "field", json_string(sp->conditions[i].item) );
                 }
         }
 
         // Search Messages.
-        //json_t **msgFilterN;
-        //json_t **msgTermN;
         json_t *msgFilterN[10];
         json_t *msgTermN[10];
 
         if (sp->smsg.nmsg > 0) {
 
-                //msgFilterN = (json_t **)malloc(sp->smsg.nmsg*sizeof(json_t));
-                //msgTermN = (json_t **)malloc(sp->smsg.nmsg*sizeof(json_t));
                 for (i = 0; i < sp->smsg.nmsg; i++) {
 
                         if (i >= 10) {
@@ -136,7 +130,7 @@ char* request_body(struct SearchParams *sp) {
                         // should > term
                         msgFilterN[i] = json_object();
                         msgTermN[i] = json_object();
-                        json_array_append( should_array, msgFilterN[i] );
+                        json_array_append_new( should_array, msgFilterN[i] );
                         json_object_set_new( msgFilterN[i], "term", msgTermN[i] );
                         json_object_set_new( msgTermN[i], sp->item_key, json_string(sp->smsg.msg[i]) );
 
@@ -159,12 +153,6 @@ char* request_body(struct SearchParams *sp) {
 
         // Free all materials to make.
         json_decref(root);
-        //free(filterN);
-        //free(termN);
-        //if (sp->smsg.nmsg > 0) {
-        //        free(msgFilterN);
-        //        free(msgTermN);
-        //}
 
         return body;
 }
