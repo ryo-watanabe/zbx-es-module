@@ -25,6 +25,8 @@
 #include "es_params.h"
 #include "es_search.h"
 
+#define LOG_LEVEL_ES_MODULE LOG_LEVEL_DEBUG
+
 /* the variable keeps timeout setting for item processing */
 static int	item_timeout = 0;
 
@@ -34,8 +36,8 @@ static int	dummy_ping(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	dummy_echo(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	dummy_random(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	es_log_search(AGENT_REQUEST *request, AGENT_RESULT *result);
-//static int	es_uint(AGENT_REQUEST *request, AGENT_RESULT *result);
-//static int	es_double(AGENT_REQUEST *request, AGENT_RESULT *result);
+static int	es_uint_get(AGENT_REQUEST *request, AGENT_RESULT *result);
+static int	es_double_get(AGENT_REQUEST *request, AGENT_RESULT *result);
 
 static ZBX_METRIC keys[] =
 /*	KEY			FLAG		FUNCTION	TEST PARAMETERS */
@@ -44,8 +46,8 @@ static ZBX_METRIC keys[] =
 	{"dummy.echo",		CF_HAVEPARAMS,	dummy_echo,	"a message"},
 	{"dummy.random",	CF_HAVEPARAMS,	dummy_random,	"1,1000"},
 	{"es.log_search",	CF_HAVEPARAMS,	es_log_search,	NULL},
-//	{"es.uint",		CF_HAVEPARAMS,	es_uint,	NULL},
-//	{"es.double",		CF_HAVEPARAMS,	es_double,	NULL},
+	{"es.uint",		CF_HAVEPARAMS,	es_uint_get,	NULL},
+	{"es.double",		CF_HAVEPARAMS,	es_double_get,	NULL},
 	{NULL}
 };
 
@@ -90,24 +92,24 @@ void	zbx_module_item_timeout(int timeout)
  ******************************************************************************/
 ZBX_METRIC	*zbx_module_item_list(void)
 {
-	zabbix_log(LOG_LEVEL_INFORMATION, "module loading");
+	zabbix_log(LOG_LEVEL_ES_MODULE, "module loading");
 	return keys;
 }
 
 static int	es_log_search(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
-	zabbix_log(LOG_LEVEL_INFORMATION, "es_log_search called");
+	zabbix_log(LOG_LEVEL_ES_MODULE, "es_log_search called");
 
 	char msg[MESSAGE_MAX] = "";
 	struct SearchParams *sp;
-	if (NULL == (sp = set_params(request->params, request->nparam, msg))) {
+	if (NULL == (sp = set_log_search_params(request->params, request->nparam, msg))) {
 		SET_MSG_RESULT(result, strdup(msg));
 		return SYSINFO_RET_FAIL;
 	}
 
 	char *logs;
 	*msg = '\0';
-	int ret = es_search(&logs, sp, msg);
+	int ret = es_log(&logs, sp, msg);
 	if (ret == 0) {
 		SET_TEXT_RESULT(result, logs);
 	} else if (ret != 2) { // ret = 2 means no logs.
@@ -118,9 +120,57 @@ static int	es_log_search(AGENT_REQUEST *request, AGENT_RESULT *result)
 	return SYSINFO_RET_OK;
 }
 
+static int	es_uint_get(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+	zabbix_log(LOG_LEVEL_ES_MODULE, "es_uint called");
+
+	char msg[MESSAGE_MAX] = "";
+	struct SearchParams *sp;
+	if (NULL == (sp = set_numeric_get_params(request->params, request->nparam, msg))) {
+		SET_MSG_RESULT(result, strdup(msg));
+		return SYSINFO_RET_FAIL;
+	}
+
+	unsigned long value = 0;
+	*msg = '\0';
+	int ret = es_uint(&value, sp, msg);
+	if (ret == 0) {
+		SET_UI64_RESULT(result, value);
+	} else if (ret != 2) { // ret = 2 means no logs.
+		SET_MSG_RESULT(result, strdup(msg));
+		return SYSINFO_RET_FAIL;
+	}
+
+	return SYSINFO_RET_OK;
+}
+
+static int	es_double_get(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+	zabbix_log(LOG_LEVEL_ES_MODULE, "es_double called");
+
+	char msg[MESSAGE_MAX] = "";
+	struct SearchParams *sp;
+	if (NULL == (sp = set_numeric_get_params(request->params, request->nparam, msg))) {
+		SET_MSG_RESULT(result, strdup(msg));
+		return SYSINFO_RET_FAIL;
+	}
+
+	double value = 0;
+	*msg = '\0';
+	int ret = es_double(&value, sp, msg);
+	if (ret == 0) {
+		SET_DBL_RESULT(result, value);
+	} else if (ret != 2) { // ret = 2 means no logs.
+		SET_MSG_RESULT(result, strdup(msg));
+		return SYSINFO_RET_FAIL;
+	}
+
+	return SYSINFO_RET_OK;
+}
+
 static int	dummy_ping(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
-	zabbix_log(LOG_LEVEL_INFORMATION, "dummy_ping called");
+	zabbix_log(LOG_LEVEL_ES_MODULE, "dummy_ping called");
 
 	SET_UI64_RESULT(result, 1);
 
@@ -131,7 +181,7 @@ static int	dummy_echo(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
 	char	*param;
 
-	zabbix_log(LOG_LEVEL_INFORMATION, "dummy_echo called");
+	zabbix_log(LOG_LEVEL_ES_MODULE, "dummy_echo called");
 
 	if (1 != request->nparam)
 	{
@@ -176,7 +226,7 @@ static int	dummy_random(AGENT_REQUEST *request, AGENT_RESULT *result)
 	char	*param1, *param2;
 	int	from, to;
 
-	zabbix_log(LOG_LEVEL_INFORMATION, "dummy_random called");
+	zabbix_log(LOG_LEVEL_ES_MODULE, "dummy_random called");
 
 	if (2 != request->nparam)
 	{

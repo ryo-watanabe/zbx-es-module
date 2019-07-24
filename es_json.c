@@ -11,7 +11,11 @@
 #define NUM_LOG_LINES 50
 
 // Construct query for ES
-char* request_body(struct SearchParams *sp) {
+char* request_body(struct SearchParams *sp, int num_records) {
+
+        if (num_records >  NUM_LOG_LINES) {
+                num_records = NUM_LOG_LINES;
+        }
 
 /*
         {
@@ -64,10 +68,6 @@ char* request_body(struct SearchParams *sp) {
         json_t *must_not_array = json_array();
         json_object_set_new( obj_bool, "must_not", must_not_array );
 
-        // bool > should
-        json_t *should_array = json_array();
-        json_object_set_new( obj_bool, "should", should_array );
-
         // filter > range
         json_t *filter0 = json_object();
         json_t *range = json_object();
@@ -115,28 +115,34 @@ char* request_body(struct SearchParams *sp) {
                 }
         }
 
-        // Search Messages.
-        json_t *msgFilterN[10];
-        json_t *msgTermN[10];
+        if (sp->type == PARAM_TYPE_LOG) {
+                // Search Messages.
+                json_t *msgFilterN[10];
+                json_t *msgTermN[10];
 
-        if (sp->smsg.nmsg > 0) {
+                // bool > should
+                json_t *should_array = json_array();
+                json_object_set_new( obj_bool, "should", should_array );
 
-                for (i = 0; i < sp->smsg.nmsg; i++) {
+                if (sp->smsg.nmsg > 0) {
 
-                        if (i >= 10) {
-                                break;
+                        for (i = 0; i < sp->smsg.nmsg; i++) {
+
+                                if (i >= 10) {
+                                        break;
+                                }
+
+                                // should > term
+                                msgFilterN[i] = json_object();
+                                msgTermN[i] = json_object();
+                                json_array_append_new( should_array, msgFilterN[i] );
+                                json_object_set_new( msgFilterN[i], "term", msgTermN[i] );
+                                json_object_set_new( msgTermN[i], sp->item_key, json_string(sp->smsg.msg[i]) );
+
                         }
-
-                        // should > term
-                        msgFilterN[i] = json_object();
-                        msgTermN[i] = json_object();
-                        json_array_append_new( should_array, msgFilterN[i] );
-                        json_object_set_new( msgFilterN[i], "term", msgTermN[i] );
-                        json_object_set_new( msgTermN[i], sp->item_key, json_string(sp->smsg.msg[i]) );
-
+                        // bool > minimum_should_match
+                        json_object_set_new( obj_bool, "minimum_should_match", json_integer(1) );
                 }
-                // bool > minimum_should_match
-                json_object_set_new( obj_bool, "minimum_should_match", json_integer(1) );
         }
 
         // root > sort
@@ -145,7 +151,7 @@ char* request_body(struct SearchParams *sp) {
         json_object_set_new( sort, "@timestamp", json_string("desc") );
 
         // root > size
-        json_object_set_new( root, "size", json_integer(NUM_LOG_LINES) );
+        json_object_set_new( root, "size", json_integer(num_records) );
 
         // Json string allocated and copied here, must be freed by caller.
         char* body = NULL;
@@ -319,6 +325,88 @@ int get_logs_from_data(char **logs, char* data, char* last_es_id, char* newest_e
         json_decref(jdata);
 
         *logs = buf;
+
+        return 0;
+}
+
+// Get double value from ES search result
+int get_value_from_data(double *val, char* data, char* last_es_id, char* newest_es_id, char* item_key, char* label_key, char *msg) {
+
+        json_error_t jerror;
+        json_t *jdata = json_loads(data, 0, &jerror);
+
+        if (jdata == NULL) {
+                zbx_strlcpy(msg, jerror.text, MESSAGE_MAX);
+                return 1;
+        }
+
+/*
+        {
+        "took":30,
+        "timed_out":false,
+        "_shards":{
+                "total":300,
+                "successful":300,
+                "skipped":295,
+                "failed":0
+                },
+        "hits":{
+                "total":26,
+                "max_score":null,
+                "hits":[{
+                        "_index":"kubernetes_cluster-2019.06.19",
+                        "_type":"flb_type",
+                        "_id":"r_6PbWsBS9x271TQR2Xt",
+                        "_score":null,
+                        "_source":{
+                                "container": "zabbix-server",
+                                "@timestamp": "2019-07-24T05:23:29.069081Z",
+                                "memory": "35224Ki",
+                                "namespace": "zabbix",
+                                "name": "zabbix-server-66d8d9dd5b-nfmgs",
+                                "cpu": "1m",
+                                "cpu_num": 1,
+                                "_flb-key": "metrics.pod",
+                                "memory_num": 35224
+                                },
+                        "sort":[1560911234988]
+                        },
+                        :
+                        ]
+                }
+        }
+*/
+        // hits
+        json_t *hits = json_object_get(jdata, "hits");
+
+        // hits > total
+        int total = json_integer_value(json_object_get(hits, "total"));
+
+        // hits > hists[]
+        json_t *hitarr = json_object_get(hits, "hits");
+        int num_hits = json_array_size(hitarr);
+
+        // get hists[] > _source > data
+        json_t *hit, *source;
+        char *es_id;
+        if (num_hits > 0) {
+                hit = json_array_get(hitarr, 0);
+
+                // hits[] > _source
+                source = json_object_get(hit, "_source");
+
+                // hits[] > _id, compare with previous.
+                es_id = (char*)json_string_value(json_object_get(hit, "_id"));
+                if (0 != strcmp(last_es_id, es_id)) {
+                        // _source > data
+                        *val = json_number_value(json_object_get(source, item_key));
+                        // preserve newest id for next search
+                        zbx_strlcpy(newest_es_id, es_id, strlen(es_id) + 1);
+                }
+        }
+
+        // free json data
+        json_decref(jdata);
 
         return 0;
 }

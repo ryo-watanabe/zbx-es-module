@@ -1,6 +1,12 @@
 #ifndef ES_PARAMS_H
 #define ES_PARAMS_H
 
+// Parameter types
+enum PARAM_TYPE {
+        PARAM_TYPE_LOG,
+        PARAM_TYPE_NUMERIC
+};
+
 // Condition types for query
 enum CONDITION_TYPE {
         ITEM_IS_THE_VALUE,
@@ -36,10 +42,12 @@ struct SearchParams {
         struct SearchMessage smsg;
         struct SearchCondition *conditions;
         int  nconds;
+        enum PARAM_TYPE type;
 };
 
 // Construct search params from zabbix agent reauest
-struct SearchParams* set_params(char **params, int nparam, char *msg);
+struct SearchParams* set_log_search_params(char **params, int nparam, char *msg);
+struct SearchParams* set_numeric_get_params(char **params, int nparam, char *msg);
 
 // Free search params
 void free_sp(struct SearchParams *sp);

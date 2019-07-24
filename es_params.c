@@ -99,10 +99,15 @@ int set_condition(char *param, struct SearchCondition *cond) {
 }
 
 // Construct search params from zabbix agent reauest
-struct SearchParams* set_params(char **params, int nparam, char *msg) {
+struct SearchParams* set_params(char **params, int nparam, char *msg, enum PARAM_TYPE type) {
 
-        if (nparam < 5) {
-                strcat(msg, "Invalid number of parameters (<5)");
+        int required = 5;
+        if (type == PARAM_TYPE_NUMERIC) {
+                required = 4;
+        }
+
+        if (nparam < required) {
+                strcat(msg, "Invalid number of parameters");
                 return NULL;
         }
 
@@ -113,6 +118,7 @@ struct SearchParams* set_params(char **params, int nparam, char *msg) {
         // allocate params buffer, must be freed by caller with free_sp()
         struct SearchParams *sp = (struct SearchParams *)malloc(sizeof(struct SearchParams));
 
+        sp->type = type;
         sp->period = params[0];
         zabbix_log(ES_PARAMS_LOG_LEVEL, "set_params : period=%s", sp->period);
         sp->endpoint = params[1];
@@ -121,18 +127,21 @@ struct SearchParams* set_params(char **params, int nparam, char *msg) {
         zabbix_log(ES_PARAMS_LOG_LEVEL, "set_params : prefix=%s", sp->prefix);
         sp->item_key = params[3];
         zabbix_log(ES_PARAMS_LOG_LEVEL, "set_params : item_key=%s", sp->item_key);
-        sp->message = params[4];
-        zabbix_log(ES_PARAMS_LOG_LEVEL, "set_params : message=%s", sp->message);
 
-        // parse search message string
-        if (set_search_message(params[4], &(sp->smsg))) {
-                strcat(msg, "Invalid search message string");
-                free(sp);
-                return NULL;
+        if (type == PARAM_TYPE_LOG) {
+                sp->message = params[4];
+                zabbix_log(ES_PARAMS_LOG_LEVEL, "set_params : message=%s", sp->message);
+
+                // parse search message string
+                if (set_search_message(sp->message, &(sp->smsg))) {
+                        strcat(msg, "Invalid search message string");
+                        free(sp);
+                        return NULL;
+                }
         }
 
         // parse condition strings
-        sp->nconds = nparam - 5;
+        sp->nconds = nparam - required;
         zabbix_log(ES_PARAMS_LOG_LEVEL, "set_params : nconds=%d", sp->nconds);
 
         // allocate conditions buffer, freed in free_sp()
@@ -140,13 +149,21 @@ struct SearchParams* set_params(char **params, int nparam, char *msg) {
         int i;
         sp->label_key = NULL;
         for (i = 0; i < sp->nconds; i++) {
-                set_condition(params[i + 5], &(sp->conditions[i]));
+                set_condition(params[i + required], &(sp->conditions[i]));
                 if (sp->conditions[i].type == ITEM_LABEL) {
                         sp->label_key = sp->conditions[i].item;
                 }
         }
 
         return sp;
+}
+
+struct SearchParams* set_log_search_params(char **params, int nparam, char *msg) {
+        return set_params(params, nparam, msg, PARAM_TYPE_LOG);
+}
+
+struct SearchParams* set_numeric_get_params(char **params, int nparam, char *msg) {
+        return set_params(params, nparam, msg, PARAM_TYPE_NUMERIC);
 }
 
 void free_sp(struct SearchParams *sp) {
@@ -163,7 +180,9 @@ int construct_item_name(struct SearchParams *sp, char *name) {
         strcat(buf, sp->endpoint);
         strcat(buf, sp->prefix);
         strcat(buf, sp->item_key);
-        strcat(buf, sp->message);
+        if (sp->type == PARAM_TYPE_LOG) {
+                strcat(buf, sp->message);
+        }
 
         int i;
         for (i = 0; i < sp->nconds; i++) {
