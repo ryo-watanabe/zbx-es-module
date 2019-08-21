@@ -163,6 +163,32 @@ char* request_body(struct SearchParams *sp, int num_records) {
         return body;
 }
 
+// Construct discovery query
+
+/*
+{
+        "size":0,
+        "query": {
+                "bool": {
+                        "filter": {
+                                "range": {
+                                        "@timestamp": {
+                                                "gt":"now-2m"
+                                        }
+                                }
+                        }
+                }
+        },
+        "aggs": {
+                "hostnames": {
+                        "terms": {
+                                "field":"namespace.keyword"
+                        }
+                }
+        }
+}
+*/
+
 // json_object_get through hierarchy (max 5 levels)
 json_t* json_hierarchy_object_get(json_t *data, char* key) {
         char *keycopy = strdup(key);
