@@ -4,7 +4,8 @@
 // Parameter types
 enum PARAM_TYPE {
         PARAM_TYPE_LOG,
-        PARAM_TYPE_NUMERIC
+        PARAM_TYPE_NUMERIC,
+        PARAM_TYPE_DISCOVERY
 };
 
 // Condition types for query
@@ -37,6 +38,7 @@ struct SearchParams {
         char *endpoint;
         char *prefix;
         char *item_key;
+        char *macro;
         char *message;
         char *label_key;
         struct SearchMessage smsg;
@@ -48,6 +50,7 @@ struct SearchParams {
 // Construct search params from zabbix agent reauest
 struct SearchParams* set_log_search_params(char **params, int nparam, char *msg);
 struct SearchParams* set_numeric_get_params(char **params, int nparam, char *msg);
+struct SearchParams* set_discovery_params(char **params, int nparam, char *msg);
 
 // Free search params
 void free_sp(struct SearchParams *sp);

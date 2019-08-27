@@ -38,6 +38,7 @@ static int	dummy_random(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	es_log_search(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	es_uint_get(AGENT_REQUEST *request, AGENT_RESULT *result);
 static int	es_double_get(AGENT_REQUEST *request, AGENT_RESULT *result);
+static int	es_discovery_search(AGENT_REQUEST *request, AGENT_RESULT *result);
 
 static ZBX_METRIC keys[] =
 /*	KEY			FLAG		FUNCTION	TEST PARAMETERS */
@@ -48,6 +49,7 @@ static ZBX_METRIC keys[] =
 	{"es.log_search",	CF_HAVEPARAMS,	es_log_search,	NULL},
 	{"es.uint",		CF_HAVEPARAMS,	es_uint_get,	NULL},
 	{"es.double",		CF_HAVEPARAMS,	es_double_get,	NULL},
+	{"es.discovery",	CF_HAVEPARAMS,	es_discovery_search,	NULL},
 	{NULL}
 };
 
@@ -161,6 +163,30 @@ static int	es_double_get(AGENT_REQUEST *request, AGENT_RESULT *result)
 	if (ret == 0) {
 		SET_DBL_RESULT(result, value);
 	} else if (ret != 2) { // ret = 2 means no logs.
+		SET_MSG_RESULT(result, strdup(msg));
+		return SYSINFO_RET_FAIL;
+	}
+
+	return SYSINFO_RET_OK;
+}
+
+static int	es_discovery_search(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+	zabbix_log(LOG_LEVEL_ES_MODULE, "es_discovery_search called");
+
+	char msg[MESSAGE_MAX] = "";
+	struct SearchParams *sp;
+	if (NULL == (sp = set_discovery_params(request->params, request->nparam, msg))) {
+		SET_MSG_RESULT(result, strdup(msg));
+		return SYSINFO_RET_FAIL;
+	}
+
+	char *data;
+	*msg = '\0';
+	int ret = es_discovery(&data, sp, msg);
+	if (ret == 0) {
+		SET_STR_RESULT(result, data);
+	} else {
 		SET_MSG_RESULT(result, strdup(msg));
 		return SYSINFO_RET_FAIL;
 	}

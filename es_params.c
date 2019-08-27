@@ -139,19 +139,26 @@ struct SearchParams* set_params(char **params, int nparam, char *msg, enum PARAM
                         return NULL;
                 }
         }
+        if (type == PARAM_TYPE_DISCOVERY) {
+                sp->macro = params[4];
+        }
 
         // parse condition strings
         sp->nconds = nparam - required;
         zabbix_log(ES_PARAMS_LOG_LEVEL, "set_params : nconds=%d", sp->nconds);
 
-        // allocate conditions buffer, freed in free_sp()
-        sp->conditions = (struct SearchCondition *)malloc(sp->nconds*sizeof(struct SearchCondition));
-        int i;
         sp->label_key = NULL;
-        for (i = 0; i < sp->nconds; i++) {
-                set_condition(params[i + required], &(sp->conditions[i]));
-                if (sp->conditions[i].type == ITEM_LABEL) {
-                        sp->label_key = sp->conditions[i].item;
+        if (sp->nconds == 0) {
+                sp->conditions = NULL;
+        } else {
+                // allocate conditions buffer, freed in free_sp()
+                sp->conditions = (struct SearchCondition *)malloc(sp->nconds*sizeof(struct SearchCondition));
+                int i;
+                for (i = 0; i < sp->nconds; i++) {
+                        set_condition(params[i + required], &(sp->conditions[i]));
+                        if (sp->conditions[i].type == ITEM_LABEL) {
+                                sp->label_key = sp->conditions[i].item;
+                        }
                 }
         }
 
@@ -166,8 +173,14 @@ struct SearchParams* set_numeric_get_params(char **params, int nparam, char *msg
         return set_params(params, nparam, msg, PARAM_TYPE_NUMERIC);
 }
 
+struct SearchParams* set_discovery_params(char **params, int nparam, char *msg) {
+        return set_params(params, nparam, msg, PARAM_TYPE_DISCOVERY);
+}
+
 void free_sp(struct SearchParams *sp) {
-        free(sp->conditions);
+        if (sp->conditions != NULL) {
+                free(sp->conditions);
+        }
         free(sp);
 }
 

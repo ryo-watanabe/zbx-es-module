@@ -54,8 +54,10 @@ int es_search(char **logs, double *val, struct SearchParams *sp, char *msg, enum
         // make request json
         if (type == SEARCH_TYPE_LOG) {
                 body = request_body(sp, 50);
-        } else { //type == SEARCH_TYPE_NUMBER
+        } else if (type == SEARCH_TYPE_NUMBER) {
                 body = request_body(sp, 1);
+        } else { // typr == SEARCH_TYPE_DISCOVERY
+                body = discovery_request_body(sp->period, sp->item_key);
         }
         zabbix_log(ES_SEARCH_LOG_LEVEL, "REQUEST BODY : %s", body);
 
@@ -73,19 +75,24 @@ int es_search(char **logs, double *val, struct SearchParams *sp, char *msg, enum
                         if (type == SEARCH_TYPE_LOG) {
                                 // get logs in one string and newest ES record id
                                 json_error = get_logs_from_data(logs, buf->data, last_es_id, newest_es_id, sp->item_key, sp->label_key, msg);
-                        } else { //type == SEARCH_TYPE_NUMBER
+                        } else if (type == SEARCH_TYPE_NUMBER) {
                                 // get number by double and newest ES record id
                                 json_error = get_value_from_data(val, buf->data, last_es_id, newest_es_id, sp->item_key, sp->label_key, msg);
+                        } else { //type == SEARCH_TYPE_DISCOVERY
+                                // discovery
+                                json_error = get_discovery_from_data(logs, buf->data, sp->macro, msg);
                         }
 
                         if (!json_error) {
-                                if (*newest_es_id != '\0') {
+                                if (*newest_es_id != '\0' || type == SEARCH_TYPE_DISCOVERY) {
                                         //  store newest ES record id in db
                                         zabbix_log(ES_SEARCH_LOG_LEVEL, "Newest ES id : %s", newest_es_id);
                                         if (type == SEARCH_TYPE_LOG) {
                                                 zabbix_log(ES_SEARCH_LOG_LEVEL, "LOGS : %s", *logs);
-                                        } else { //type == SEARCH_TYPE_NUMBER
+                                        } else if (type == SEARCH_TYPE_NUMBER) {
                                                 zabbix_log(ES_SEARCH_LOG_LEVEL, "VALUE : %.3f", *val);
+                                        } else { //type == SEARCH_TYPE_DISCOVERY
+                                                zabbix_log(ES_SEARCH_LOG_LEVEL, "DATA : %s", *logs);
                                         }
                                 } else {
                                         zabbix_log(ES_SEARCH_LOG_LEVEL, "No new data");
@@ -140,6 +147,11 @@ int es_search(char **logs, double *val, struct SearchParams *sp, char *msg, enum
 // Log search through ES
 int es_log(char **logs, struct SearchParams *sp, char *msg) {
         return es_search(logs, NULL, sp, msg, SEARCH_TYPE_LOG);
+}
+
+// Discover possible values for an item through ES
+int es_discovery(char **data, struct SearchParams *sp, char *msg) {
+        return es_search(data, NULL, sp, msg, SEARCH_TYPE_DISCOVERY);
 }
 
 // Get uint metrics through ES

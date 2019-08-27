@@ -164,6 +164,7 @@ char* request_body(struct SearchParams *sp, int num_records) {
 }
 
 // Construct discovery query
+char* discovery_request_body(char* period_days, char* field) {
 
 /*
 {
@@ -188,6 +189,59 @@ char* request_body(struct SearchParams *sp, int num_records) {
         }
 }
 */
+
+        // root
+        json_t *root = json_object();
+
+        // root > querry
+        json_t *query = json_object();
+        json_object_set_new( root, "query", query );
+
+        // querry > bool
+        json_t *obj_bool = json_object();
+        json_object_set_new( query, "bool", obj_bool );
+
+        // bool > filter
+        json_t *filter = json_object();
+        json_object_set_new( obj_bool, "filter", filter );
+
+        // filter > range
+        json_t *range = json_object();
+        json_object_set_new( filter, "range", range );
+
+        // range > timestamp
+        json_t *timestamp = json_object();
+        json_object_set_new( range, "@timestamp", timestamp );
+        char since[16] = "now-";
+        strcat(since, period_days);
+        strcat(since, "d");
+        json_object_set_new( timestamp, "gt", json_string(since) );
+
+        // root > aggs
+        json_t *aggs = json_object();
+        json_object_set_new( root, "aggs", aggs );
+
+        // aggs > discoveries
+        json_t *discoveries = json_object();
+        json_object_set_new( aggs, "discoveries", discoveries );
+
+        // discoveries > terms
+        json_t *terms = json_object();
+        json_object_set_new( discoveries, "terms", terms );
+        json_object_set_new( terms, "field", json_string(field) );
+
+        // root > size
+        json_object_set_new( root, "size", json_integer(0) );
+
+        // Json string allocated and copied here, must be freed by caller.
+        char* body = NULL;
+        body = json_dumps(root, 0);
+
+        // Free all materials to make.
+        json_decref(root);
+
+        return body;
+}
 
 // json_object_get through hierarchy (max 5 levels)
 json_t* json_hierarchy_object_get(json_t *data, char* key) {
@@ -432,6 +486,97 @@ int get_value_from_data(double *val, char* data, char* last_es_id, char* newest_
         }
 
         // free json data
+        json_decref(jdata);
+
+        return 0;
+}
+
+// Get discovery from ES aggs result
+int get_discovery_from_data(char **discovery, char* data, char* macro, char *msg) {
+
+        json_error_t jerror;
+        json_t *jdata = json_loads(data, 0, &jerror);
+
+        if (jdata == NULL) {
+                zbx_strlcpy(msg, jerror.text, MESSAGE_MAX);
+                return 1;
+        }
+
+/*
+{
+        "took": 194,
+        "timed_out": false,
+        "_shards": {
+                "total": 245,
+                "successful": 245,
+                "skipped": 235,
+                "failed": 0
+        },
+        "hits": {
+                "total": 339818,
+                "max_score": 0,
+                "hits": []
+        },
+        "aggregations": {
+                "discoveries": {
+                        "doc_count_error_upper_bound": 0,
+                        "sum_other_doc_count": 0,
+                        "buckets": [
+                                {
+                                  "key": "cluster02w1",
+                                  "doc_count": 98381
+                                },
+                                {
+                                  "key": "cluster02w3",
+                                  "doc_count": 55167
+                                },
+                                {
+                                  "key": "cluster02w2",
+                                  "doc_count": 33303
+                                },
+                                {
+                                  "key": "cluster02m1",
+                                  "doc_count": 17608
+                                }
+                        ]
+                }
+        }
+}
+*/
+        // aggregations
+        json_t *aggregations = json_object_get(jdata, "aggregations");
+
+        // aggregations > discoveries
+        json_t *discoveries = json_object_get(aggregations, "discoveries");
+
+        // discoveries > buckets[]
+        json_t *buckets = json_object_get(discoveries, "buckets");
+        int num_buckets = json_array_size(buckets);
+
+        // prepare output json
+        json_t *root = json_object();
+        json_t *data_array = json_array();
+        json_object_set_new( root, "data", data_array );
+        char macro_key[32] = "{#";
+        strcat(macro_key, macro);
+        strcat(macro_key, "}");
+
+        // get buckets[] > key
+        int i;
+        for (i = 0; i < num_buckets; i++) {
+                char *key = (char*)json_string_value(json_object_get(json_array_get(buckets, i), "key"));
+                json_t *item = json_object();
+                json_object_set_new( item, macro_key, json_string(key) );
+                json_array_append_new( data_array, item );
+        }
+
+        // Json string allocated and copied here, must be freed by caller.
+        *discovery = json_dumps(root, 0);
+
+        // free output json.
+        json_decref(root);
+
+        // free input json.
         json_decref(jdata);
 
         return 0;
