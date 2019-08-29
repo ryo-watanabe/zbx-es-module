@@ -51,23 +51,28 @@ es.uint[100,es.local:9200,kube_cluster,cpu_idle,hostname=cluster02node01]
 
 ## Discovery Item
 
-Get possible values of an item in json format
+Get possible values of an item in zabbix LLD json format with conditions 1...N
 
 key format:
 ```
-es.discovery[<period>,<es_endpoint>,<index_prefix>,<item_key>,<macro>]
+es.discovery[<period>,<es_endpoint>,<index_prefix>,<item_key>,<macro>,<condition1>,<condition2>,...,<conditionN>]
 ```
 |param|required/optional|for setting ..|examples|
 |---|---|---|---|
 |period|required|Search range in days|2 = search from now-2d to now|
 |es_endpoint|required|ES host address and port|elasticsearch.local:9200|
 |index_prefix|required|ES index prefix|Set "kube_cluster" for indices <br>kube_cluster-YYYY.MM.DD<br>(kube_cluster-2029.07.01,<br>kube_cluster-2029.07.02,<br>...)|
-|item_key|required|Key for discovery item|hostname.keyword|
+|item_key|required|Key for discovery item|name.keyword|
 |macro|required|Zabbix Macro for discovery item|Set "DSCV_HOST"<br>for zabbix macro {#DSCV_HOST}|
+|condition1|optional|Filtering by item=value||
+|:|optional|(Item hierarchy expressed by dot)||
+|conditionN|optional||||
 
 example:  
 ```
 es.discovery[2,es.local:9200,kube_cluster,hostname.keyword,DSCV_HOST]
+
+es.discovery[2,es.local:9200,kube_cluster,name.keyword,DSCV_DEPLOY,fluentbit.tag=apps.deployments]
 ```
 
 ## Build & Config

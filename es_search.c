@@ -52,13 +52,7 @@ int es_search(char **logs, double *val, struct SearchParams *sp, char *msg, enum
         zabbix_log(ES_SEARCH_LOG_LEVEL, "URL : %s", url);
 
         // make request json
-        if (type == SEARCH_TYPE_LOG) {
-                body = request_body(sp, 50);
-        } else if (type == SEARCH_TYPE_NUMBER) {
-                body = request_body(sp, 1);
-        } else { // typr == SEARCH_TYPE_DISCOVERY
-                body = discovery_request_body(sp->period, sp->item_key);
-        }
+        body = request_body(sp);
         zabbix_log(ES_SEARCH_LOG_LEVEL, "REQUEST BODY : %s", body);
 
         // Do curl post

@@ -11,11 +11,7 @@
 #define NUM_LOG_LINES 50
 
 // Construct query for ES
-char* request_body(struct SearchParams *sp, int num_records) {
-
-        if (num_records >  NUM_LOG_LINES) {
-                num_records = NUM_LOG_LINES;
-        }
+char* request_body(struct SearchParams *sp) {
 
 /*
         {
@@ -43,6 +39,26 @@ char* request_body(struct SearchParams *sp, int num_records) {
         "sort":{"@timestamp":"desc"},
         "size":3
         }
+*/
+/*  body for discovery
+{
+        "size":0,
+        "query": {
+                "bool": {
+                        "filter": [
+                                {"range": {"@timestamp": {"gt":"now-2m"}}},
+                                {"term":{"_flb-key":"apps.deployments"}}
+                        ]
+                }
+        },
+        "aggs": {
+                "discoveries": {
+                        "terms": {
+                                "field":"name.keyword"
+                        }
+                }
+        }
+}
 */
 
         // root
@@ -77,7 +93,11 @@ char* request_body(struct SearchParams *sp, int num_records) {
         json_object_set_new( range, "@timestamp", timestamp );
         char since[16] = "now-";
         strcat(since, sp->period);
-        strcat(since, "s");
+        if (sp->type == PARAM_TYPE_LOG || sp->type == PARAM_TYPE_NUMERIC) {
+                strcat(since, "s");
+        } else { // sp->type == PARAM_TYPE_DISCOVERY
+                strcat(since, "d");
+        }
         json_object_set_new( timestamp, "gt", json_string(since) );
 
         // Conditions.
@@ -145,93 +165,37 @@ char* request_body(struct SearchParams *sp, int num_records) {
                 }
         }
 
-        // root > sort
-        json_t *sort = json_object();
-        json_object_set_new( root, "sort", sort );
-        json_object_set_new( sort, "@timestamp", json_string("desc") );
-
-        // root > size
-        json_object_set_new( root, "size", json_integer(num_records) );
-
-        // Json string allocated and copied here, must be freed by caller.
-        char* body = NULL;
-        body = json_dumps(root, 0);
-
-        // Free all materials to make.
-        json_decref(root);
-
-        return body;
-}
-
-// Construct discovery query
-char* discovery_request_body(char* period_days, char* field) {
-
-/*
-{
-        "size":0,
-        "query": {
-                "bool": {
-                        "filter": {
-                                "range": {
-                                        "@timestamp": {
-                                                "gt":"now-2m"
-                                        }
-                                }
-                        }
-                }
-        },
-        "aggs": {
-                "hostnames": {
-                        "terms": {
-                                "field":"namespace.keyword"
-                        }
-                }
+        if (sp->type == PARAM_TYPE_LOG || sp->type == PARAM_TYPE_NUMERIC) {
+                // root > sort
+                json_t *sort = json_object();
+                json_object_set_new( root, "sort", sort );
+                json_object_set_new( sort, "@timestamp", json_string("desc") );
         }
-}
-*/
 
-        // root
-        json_t *root = json_object();
+        if (sp->type == PARAM_TYPE_DISCOVERY) {
+                // root > aggs
+                json_t *aggs = json_object();
+                json_object_set_new( root, "aggs", aggs );
 
-        // root > querry
-        json_t *query = json_object();
-        json_object_set_new( root, "query", query );
+                // aggs > discoveries
+                json_t *discoveries = json_object();
+                json_object_set_new( aggs, "discoveries", discoveries );
 
-        // querry > bool
-        json_t *obj_bool = json_object();
-        json_object_set_new( query, "bool", obj_bool );
+                // discoveries > terms
+                json_t *terms = json_object();
+                json_object_set_new( discoveries, "terms", terms );
+                json_object_set_new( terms, "field", json_string(sp->item_key) );
 
-        // bool > filter
-        json_t *filter = json_object();
-        json_object_set_new( obj_bool, "filter", filter );
-
-        // filter > range
-        json_t *range = json_object();
-        json_object_set_new( filter, "range", range );
-
-        // range > timestamp
-        json_t *timestamp = json_object();
-        json_object_set_new( range, "@timestamp", timestamp );
-        char since[16] = "now-";
-        strcat(since, period_days);
-        strcat(since, "d");
-        json_object_set_new( timestamp, "gt", json_string(since) );
-
-        // root > aggs
-        json_t *aggs = json_object();
-        json_object_set_new( root, "aggs", aggs );
-
-        // aggs > discoveries
-        json_t *discoveries = json_object();
-        json_object_set_new( aggs, "discoveries", discoveries );
-
-        // discoveries > terms
-        json_t *terms = json_object();
-        json_object_set_new( discoveries, "terms", terms );
-        json_object_set_new( terms, "field", json_string(field) );
+        }
 
         // root > size
-        json_object_set_new( root, "size", json_integer(0) );
+        if (sp->type == PARAM_TYPE_LOG) {
+                json_object_set_new( root, "size", json_integer(NUM_LOG_LINES) );
+        } else if (sp->type == PARAM_TYPE_NUMERIC) {
+                json_object_set_new( root, "size", json_integer(1) );
+        } else { // sp->type == PARAM_TYPE_DISCOVERY
+                json_object_set_new( root, "size", json_integer(0) );
+        }
 
         // Json string allocated and copied here, must be freed by caller.
         char* body = NULL;
