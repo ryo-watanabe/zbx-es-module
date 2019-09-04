@@ -65,6 +65,10 @@ int curl_post(char* url, char* body, struct Buffer *buf, char* msg, long *code) 
                 zbx_strlcpy(msg, curl_easy_strerror(ret), MESSAGE_MAX);
                 curl_error = 1;
         }
+
+        // free http header
+        curl_slist_free_all(headers);
+
         curl_easy_cleanup(curl);
 
         return curl_error;

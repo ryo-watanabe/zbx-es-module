@@ -85,6 +85,9 @@ int set_condition(char *param, struct SearchCondition *cond) {
                                 *item++ = *p++;
                         } else {
                                 *value++ = *p++;
+                                if (*p == '*') {
+                                        cond->type = ITEM_IS_THE_VALUE_WITH_WILDCARD;
+                                }
                         }
                 }
         }

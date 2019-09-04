@@ -11,6 +11,7 @@ enum PARAM_TYPE {
 // Condition types for query
 enum CONDITION_TYPE {
         ITEM_IS_THE_VALUE,
+        ITEM_IS_THE_VALUE_WITH_WILDCARD,
         ITEM_EXISTS,
         ITEM_NOT_EXIST,
         ITEM_LABEL

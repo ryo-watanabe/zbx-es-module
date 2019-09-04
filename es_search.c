@@ -37,7 +37,7 @@ int es_search(char **logs, double *val, struct SearchParams *sp, char *msg, enum
         // get ES record id of previous search
         time_t prev_time = 0;
         time_t now = time(NULL);
-        int is_new_item = get_db_item(name, last_es_id, status, &prev_time);
+        int is_new_item = get_db_item(name, last_es_id, status, &body, &prev_time);
         time_t offset = now - prev_time;
         zabbix_log(ES_SEARCH_LOG_LEVEL, "Last status:%s Id:%s name:%s time:%ld(offset:%ldsec.)", status, last_es_id, name, prev_time, offset);
         bool prev_error = (0 == strcmp(status, "error"));
@@ -51,8 +51,13 @@ int es_search(char **logs, double *val, struct SearchParams *sp, char *msg, enum
         strcat(url, "-*/_search");
         zabbix_log(ES_SEARCH_LOG_LEVEL, "URL : %s", url);
 
-        // make request json
-        body = request_body(sp);
+        if (is_new_item && body == NULL) {
+                // make request json
+                zabbix_log(ES_SEARCH_LOG_LEVEL, "Constructing request json");
+                body = request_body(sp);
+        } else {
+                zabbix_log(ES_SEARCH_LOG_LEVEL, "Re-using request json in DB");
+        }
         zabbix_log(ES_SEARCH_LOG_LEVEL, "REQUEST BODY : %s", body);
 
         // Do curl post
@@ -107,7 +112,7 @@ int es_search(char **logs, double *val, struct SearchParams *sp, char *msg, enum
         } else {
                 zbx_strlcpy(status, "ok", 3);
         }
-        put_db_item(name, newest_es_id, status, is_new_item);
+        put_db_item(name, newest_es_id, status, body, is_new_item);
 
         // free data except log string
         free(buf->data);

@@ -9,6 +9,7 @@
 #include "es_json.h"
 
 #define NUM_LOG_LINES 50
+#define NUM_DISCOVERIES 200
 
 // Construct query for ES
 char* request_body(struct SearchParams *sp) {
@@ -120,6 +121,13 @@ char* request_body(struct SearchParams *sp) {
                         json_object_set_new( termN[i], sp->conditions[i].item, json_string(sp->conditions[i].value) );
                 }
 
+                // must > wildcard
+                if (sp->conditions[i].type == ITEM_IS_THE_VALUE_WITH_WILDCARD) {
+                        json_array_append_new( must_array, filterN[i] );
+                        json_object_set_new( filterN[i], "wildcard", termN[i] );
+                        json_object_set_new( termN[i], sp->conditions[i].item, json_string(sp->conditions[i].value) );
+                }
+
                 // must > exists
                 if (sp->conditions[i].type == ITEM_EXISTS || sp->conditions[i].type == ITEM_LABEL) {
                         json_array_append_new( must_array, filterN[i] );
@@ -185,6 +193,7 @@ char* request_body(struct SearchParams *sp) {
                 json_t *terms = json_object();
                 json_object_set_new( discoveries, "terms", terms );
                 json_object_set_new( terms, "field", json_string(sp->item_key) );
+                json_object_set_new( terms, "size", json_integer(NUM_DISCOVERIES) );
 
         }
 
