@@ -1,6 +1,11 @@
 #ifndef ES_PARAMS_H
 #define ES_PARAMS_H
 
+#define CONDITION_STR_MAX 64
+#define SEARCH_MESSAGE_BUFFER 256
+#define SEARCH_MESSAGES 10
+#define CONDITIONS 10
+
 // Parameter types
 enum PARAM_TYPE {
         PARAM_TYPE_LOG,
@@ -26,8 +31,8 @@ enum MESSAGE_TYPE {
 // Struct for constructing query
 struct SearchCondition {
         enum CONDITION_TYPE type;
-        char item[32];
-        char value[32];
+        char item[CONDITION_STR_MAX];
+        char value[CONDITION_STR_MAX];
 };
 
 // Messages for log filtering
@@ -35,9 +40,9 @@ struct SearchCondition {
 // msg[0] = "msgA", mgs[1] = "msgB", ...
 struct SearchMessage {
         int nmsg;
-        enum MESSAGE_TYPE type[10];
-        char *msg[10];
-        char buf[256];
+        enum MESSAGE_TYPE type[SEARCH_MESSAGES];
+        char *msg[SEARCH_MESSAGES];
+        char buf[SEARCH_MESSAGE_BUFFER];
 };
 
 // Parameter holder for ES search query

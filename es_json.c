@@ -102,12 +102,12 @@ char* request_body(struct SearchParams *sp) {
         json_object_set_new( timestamp, "gt", json_string(since) );
 
         // Conditions.
-        json_t *filterN[10];
-        json_t *termN[10];
+        json_t *filterN[CONDITIONS];
+        json_t *termN[CONDITIONS];
         int i;
         for (i = 0; i < sp->nconds; i++) {
 
-                if (i >= 10) {
+                if (i >= CONDITIONS) {
                         break;
                 }
 
@@ -145,8 +145,8 @@ char* request_body(struct SearchParams *sp) {
 
         if (sp->type == PARAM_TYPE_LOG) {
                 // Search Messages.
-                json_t *msgFilterN[10];
-                json_t *msgTermN[10];
+                json_t *msgFilterN[SEARCH_MESSAGES];
+                json_t *msgTermN[SEARCH_MESSAGES];
 
                 // bool > should
                 json_t *should_array = json_array();
@@ -156,7 +156,7 @@ char* request_body(struct SearchParams *sp) {
 
                         for (i = 0; i < sp->smsg.nmsg; i++) {
 
-                                if (i >= 10) {
+                                if (i >= SEARCH_MESSAGES) {
                                         break;
                                 }
 

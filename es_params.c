@@ -13,7 +13,7 @@
 
 int set_search_message(char *message, struct SearchMessage *smsg) {
 
-        if (strlen(message) > 255) {
+        if (strlen(message) >= SEARCH_MESSAGE_BUFFER) {
                 return 1;
         }
         // TODO: Snitaize or validate message string.
@@ -46,7 +46,7 @@ int set_search_message(char *message, struct SearchMessage *smsg) {
                         }
                         m++;
                 }
-                if (smsg->nmsg == 10) {
+                if (smsg->nmsg == SEARCH_MESSAGES) {
                         break;
                 }
         }
@@ -81,13 +81,18 @@ int set_condition(char *param, struct SearchCondition *cond) {
         bool in_item = true;
         char *item = cond->item;
         char *value = cond->value;
+        int strcnt = 0;
         while (*p != '\0') {
                 if (*p == '=') {
                         // change copy buffer to value when '=' found
                         cond->type = ITEM_IS_THE_VALUE;
                         in_item = false;
+                        strcnt = 0;
                         p++;
                 } else {
+                        if (++strcnt > CONDITION_STR_MAX) {
+                                return 1;
+                        }
                         if (in_item) {
                                 *item++ = *p++;
                         } else {
@@ -129,6 +134,7 @@ struct SearchParams* set_params(char **params, int nparam, char *msg, enum PARAM
         struct SearchParams *sp = (struct SearchParams *)malloc(sizeof(struct SearchParams));
 
         sp->type = type;
+        sp->conditions = NULL;
         sp->period = params[0];
         zabbix_log(ES_PARAMS_LOG_LEVEL, "set_params : period=%s", sp->period);
         sp->endpoint = params[1];
@@ -153,19 +159,26 @@ struct SearchParams* set_params(char **params, int nparam, char *msg, enum PARAM
                 sp->macro = params[4];
         }
 
-        // parse condition strings
         sp->nconds = nparam - required;
+        if (sp->nconds > CONDITIONS) {
+                strcat(msg, "Too many conditions > 10");
+                free(sp);
+                return NULL;
+        }
         zabbix_log(ES_PARAMS_LOG_LEVEL, "set_params : nconds=%d", sp->nconds);
 
+        // parse condition strings
         sp->label_key = NULL;
-        if (sp->nconds == 0) {
-                sp->conditions = NULL;
-        } else {
+        if (sp->nconds > 0) {
                 // allocate conditions buffer, freed in free_sp()
                 sp->conditions = (struct SearchCondition *)malloc(sp->nconds*sizeof(struct SearchCondition));
                 int i;
                 for (i = 0; i < sp->nconds; i++) {
-                        set_condition(params[i + required], &(sp->conditions[i]));
+                        if (set_condition(params[i + required], &(sp->conditions[i]))) {
+                                strcat(msg, "Invalid condition string");
+                                free(sp);
+                                return NULL;
+                        }
                         if (sp->conditions[i].type == ITEM_LABEL) {
                                 sp->label_key = sp->conditions[i].item;
                         }
@@ -200,11 +213,15 @@ int construct_item_name(struct SearchParams *sp, char *name) {
         // making unique search item key by connecting all parameters
         char buf[256] = "";
 
+        strcat(buf, sp->period);
         strcat(buf, sp->endpoint);
         strcat(buf, sp->prefix);
         strcat(buf, sp->item_key);
         if (sp->type == PARAM_TYPE_LOG) {
                 strcat(buf, sp->message);
+        }
+        if (sp->type == PARAM_TYPE_DISCOVERY) {
+                strcat(buf, sp->macro);
         }
 
         int i;
