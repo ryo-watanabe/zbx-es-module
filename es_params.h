@@ -17,6 +17,12 @@ enum CONDITION_TYPE {
         ITEM_LABEL
 };
 
+// Message types for log filtering
+enum MESSAGE_TYPE {
+        MESSAGE_TYPE_WORD,
+        MESSAGE_TYPE_PHRASE
+};
+
 // Struct for constructing query
 struct SearchCondition {
         enum CONDITION_TYPE type;
@@ -29,6 +35,7 @@ struct SearchCondition {
 // msg[0] = "msgA", mgs[1] = "msgB", ...
 struct SearchMessage {
         int nmsg;
+        enum MESSAGE_TYPE type[10];
         char *msg[10];
         char buf[256];
 };

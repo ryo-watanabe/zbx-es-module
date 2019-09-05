@@ -164,7 +164,11 @@ char* request_body(struct SearchParams *sp) {
                                 msgFilterN[i] = json_object();
                                 msgTermN[i] = json_object();
                                 json_array_append_new( should_array, msgFilterN[i] );
-                                json_object_set_new( msgFilterN[i], "term", msgTermN[i] );
+                                if (sp->smsg.type[i] == MESSAGE_TYPE_WORD) {
+                                        json_object_set_new( msgFilterN[i], "term", msgTermN[i] );
+                                } else { // sp->smsg.type[i] == MESSAGE_TYPE_PHRASE
+                                        json_object_set_new( msgFilterN[i], "match_phrase", msgTermN[i] );
+                                }
                                 json_object_set_new( msgTermN[i], sp->item_key, json_string(sp->smsg.msg[i]) );
 
                         }

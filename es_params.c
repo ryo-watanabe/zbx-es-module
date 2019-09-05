@@ -31,12 +31,19 @@ int set_search_message(char *message, struct SearchMessage *smsg) {
         // Divide messages
         m = smsg->buf;
         smsg->nmsg = 0;
+        int type_index = smsg->nmsg;
         smsg->msg[smsg->nmsg++] = m;
+        smsg->type[type_index] = MESSAGE_TYPE_WORD;
         while (*m != '\0') {
                 if (*m == '|') {
                         *m++ = '\0';
+                        type_index = smsg->nmsg;
                         smsg->msg[smsg->nmsg++] = m;
+                        smsg->type[type_index] = MESSAGE_TYPE_WORD;
                 } else {
+                        if (*m == ' ') {
+                                smsg->type[type_index] = MESSAGE_TYPE_PHRASE;
+                        }
                         m++;
                 }
                 if (smsg->nmsg == 10) {
@@ -47,7 +54,7 @@ int set_search_message(char *message, struct SearchMessage *smsg) {
         // debug print
         int i;
         for (i = 0; i < smsg->nmsg; i++) {
-                zabbix_log(ES_PARAMS_LOG_LEVEL, "set_search_message : msg=%s", smsg->msg[i]);
+                zabbix_log(ES_PARAMS_LOG_LEVEL, "set_search_message : msg=%s type=%d", smsg->msg[i], smsg->type[i]);
         }
 
         return 0;
