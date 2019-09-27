@@ -48,7 +48,7 @@ int es_search(char **logs, double *val, struct SearchParams *sp, char *msg, enum
         strcat(url, sp->endpoint);
         strcat(url, "/");
         strcat(url, sp->prefix);
-        strcat(url, "-*/_search");
+        strcat(url, "/_search");
         zabbix_log(ES_SEARCH_LOG_LEVEL, "URL : %s", url);
 
         if (is_new_item && body == NULL) {

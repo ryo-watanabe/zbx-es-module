@@ -128,6 +128,13 @@ char* request_body(struct SearchParams *sp) {
                         json_object_set_new( termN[i], sp->conditions[i].item, json_string(sp->conditions[i].value) );
                 }
 
+                // must_not > term
+                if (sp->conditions[i].type == ITEM_IS_NOT_THE_VALUE) {
+                        json_array_append_new( must_not_array, filterN[i] );
+                        json_object_set_new( filterN[i], "term", termN[i] );
+                        json_object_set_new( termN[i], sp->conditions[i].item, json_string(sp->conditions[i].value) );
+                }
+
                 // must > exists
                 if (sp->conditions[i].type == ITEM_EXISTS || sp->conditions[i].type == ITEM_LABEL) {
                         json_array_append_new( must_array, filterN[i] );
@@ -193,10 +200,15 @@ char* request_body(struct SearchParams *sp) {
                 json_t *discoveries = json_object();
                 json_object_set_new( aggs, "discoveries", discoveries );
 
+                char item_keyword[CONDITION_STR_MAX];
+                *item_keyword = '\0';
+                strcat(item_keyword, sp->item_key);
+                strcat(item_keyword, ".keyword");
+
                 // discoveries > terms
                 json_t *terms = json_object();
                 json_object_set_new( discoveries, "terms", terms );
-                json_object_set_new( terms, "field", json_string(sp->item_key) );
+                json_object_set_new( terms, "field", json_string(item_keyword) );
                 json_object_set_new( terms, "size", json_integer(NUM_DISCOVERIES) );
 
         }

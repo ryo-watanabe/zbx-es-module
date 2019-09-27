@@ -85,7 +85,11 @@ int set_condition(char *param, struct SearchCondition *cond) {
         while (*p != '\0') {
                 if (*p == '=') {
                         // change copy buffer to value when '=' found
-                        cond->type = ITEM_IS_THE_VALUE;
+                        if (cond->type == ITEM_EXISTS) {
+                                cond->type = ITEM_IS_THE_VALUE;
+                        } else {
+                                cond->type = ITEM_IS_NOT_THE_VALUE;
+                        }
                         in_item = false;
                         strcnt = 0;
                         p++;
@@ -107,6 +111,10 @@ int set_condition(char *param, struct SearchCondition *cond) {
         // close item and value string
         *item = '\0';
         *value = '\0';
+
+        if (cond->type == ITEM_IS_THE_VALUE || cond->type == ITEM_IS_NOT_THE_VALUE) {
+                strcat(cond->item, ".keyword");
+        }
 
         zabbix_log(ES_PARAMS_LOG_LEVEL, "set_condition : type=%d item=%s value=%s", cond->type, cond->item, cond->value);
 
