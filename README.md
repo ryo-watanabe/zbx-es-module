@@ -70,9 +70,11 @@ es.discovery[<period>,<es_endpoint>,<es_index>,<item_key>,<macro>,<condition1>,<
 |period|required|Search range in days|2 = search from now-2d to now|
 |es_endpoint|required|ES host address and port|elasticsearch.local:9200|
 |es_index|required|ES index (with wildcard)|kube_cluster-* <br>for daily indices <br>kube_cluster-YYYY.MM.DD|
-|item_key|required|Key for discovery item|hostname<br>(Actually queried by hostname.keyword)|
+|item_key|required|Key for discovery item|hostname|
 |macro|required|Zabbix Macro for discovery item|Set "DSCV_HOST"<br>for zabbix macro {#DSCV_HOST}|
 |condition1<br> : <br>conditionN|optional|See filtering condition formats of Log Item|fluentbit.tag=apps.*|
+
+* Discovery values are queried by [item_key].keyword from the module.
 
 Key example:  
 ```
